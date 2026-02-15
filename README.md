@@ -21,8 +21,12 @@ VRChat Group Notify Scheduler は、VRChatのグループお知らせ（Announce
 
 ### VRChat APIの利用と規約準拠について
 本アプリケーションは、VRChatの利用規約（Terms of Service）およびコミュニティガイドラインに違反しないよう、慎重に設計されています。
+https://hello.vrchat.com/creator-guidelines
+
 
 - **Community APIの利用**: VRChatが公開しているクライアント向けAPI（通称: Community API）を利用して、正規のクライアントと同様の手順で投稿を行います。
+https://vrchat.community/reference/add-group-post
+
 - **完全ローカル動作**: 一般的なBotサービスとは異なり、**あなたのPC上でローカルに動作**します。これにより、「第三者（サーバー運営者）へのアカウント情報の共有」を回避し、安全に自動化機能を利用できます。
 - **クレデンシャルの保護**: パスワードやトークンは外部に送信されず、あなたのPC内に暗号化されて保存されます。
 
@@ -86,8 +90,13 @@ VRChat Group Notify Scheduler is a desktop application designed to help Group Ow
 
 ### VRChat API & ToS Compliance (Important)
 This application is designed with strict adherence to VRChat's Terms of Service.
+https://hello.vrchat.com/creator-guidelines
+
 
 - **Community API**: It uses the standard VRChat Client API (HTTP) to perform actions on your behalf.
+https://vrchat.community/reference/add-group-post
+
+
 - **Local Execution**: Unlike cloud-based scheduling bots, this app runs **locally on your device**. This allows you to use automation tools without sharing your credentials with third-party servers, ensuring compliance with account security policies.
 - **Encrypted Storage**: Your credentials are encrypted and stored only on your device.
 
