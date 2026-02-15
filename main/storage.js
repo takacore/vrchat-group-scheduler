@@ -2,11 +2,22 @@ import fs from 'fs/promises';
 import path from 'path';
 import { app, safeStorage } from 'electron';
 
-// ... (existing code for directory setup)
+function getDataDir() {
+    return path.join(app.getPath('userData'), 'data');
+}
+
+async function ensureDataDir() {
+    const dir = getDataDir();
+    try {
+        await fs.access(dir);
+    } catch {
+        await fs.mkdir(dir, { recursive: true });
+    }
+}
 
 export async function readJson(filename, defaultValue = null, options = { encrypted: false }) {
     await ensureDataDir();
-    const filePath = path.join(DATA_DIR, filename);
+    const filePath = path.join(getDataDir(), filename);
     try {
         if (options.encrypted && safeStorage.isEncryptionAvailable()) {
             const buffer = await fs.readFile(filePath);
@@ -29,7 +40,7 @@ export async function readJson(filename, defaultValue = null, options = { encryp
 
 export async function writeJson(filename, data, options = { encrypted: false }) {
     await ensureDataDir();
-    const filePath = path.join(DATA_DIR, filename);
+    const filePath = path.join(getDataDir(), filename);
 
     if (options.encrypted && safeStorage.isEncryptionAvailable()) {
         const jsonString = JSON.stringify(data);
