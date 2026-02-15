@@ -1,0 +1,237 @@
+.container {
+    min-height: 100vh;
+    padding: 2rem;
+    background-color: #1a202c;
+    color: #fff;
+    font-family: 'Inter', sans-serif;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid #2d3748;
+}
+
+.title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #63b3ed;
+}
+
+.userInfo {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #63b3ed;
+}
+
+.username {
+    font-weight: 600;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+@media (min-width: 768px) {
+    .grid {
+        grid-template-columns: 1fr 2fr;
+    }
+}
+
+.card {
+    background-color: #2d3748;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+}
+
+.cardTitle {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #e2e8f0;
+}
+
+.formGroup {
+    margin-bottom: 1rem;
+}
+
+.label {
+    display: block;
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+    color: #a0aec0;
+}
+
+.input,
+.textarea,
+.select {
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 6px;
+    border: 1px solid #4a5568;
+    background-color: #1a202c;
+    color: #fff;
+    font-size: 1rem;
+}
+
+.textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.button {
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 6px;
+    border: none;
+    background-color: #3182ce;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.button:hover {
+    background-color: #2b6cb0;
+}
+
+.postList {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.postItem {
+    background-color: #1a202c;
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid #4a5568;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.postInfo {
+    flex: 1;
+}
+
+.postTitle {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.postMeta {
+    font-size: 0.875rem;
+    color: #a0aec0;
+}
+
+.status {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-left: 1rem;
+}
+
+.statusPending {
+    background-color: #d69e2e;
+    color: #fff;
+}
+
+.statusPosted {
+    background-color: #38a169;
+    color: #fff;
+}
+
+.statusFailed {
+    background-color: #e53e3e;
+    color: #fff;
+}
+
+.statusMissed {
+    background-color: #718096;
+    color: #fff;
+}
+
+.deleteBtn {
+    background: none;
+    border: none;
+    color: #fc8181;
+    cursor: pointer;
+    margin-left: 1rem;
+    font-size: 1.25rem;
+}
+
+.deleteBtn:hover {
+    color: #f56565;
+}
+
+.retryBtn {
+    background: none;
+    border: none;
+    color: #68d391;
+    cursor: pointer;
+    margin-left: 0.5rem;
+    font-size: 1.25rem;
+    transition: color 0.2s;
+}
+
+.retryBtn:hover {
+    color: #48bb78;
+}
+
+.errorBanner {
+    background-color: #f56565;
+    color: white;
+    padding: 1rem;
+    margin-bottom: 2rem;
+    border-radius: 6px;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.closeError {
+    background: none;
+    border: none;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 1.2rem;
+}
+
+.statusDeleted {
+    background-color: #718096;
+    color: #cbd5e0;
+    text-decoration: line-through;
+}
+
+.trashToggle {
+    background: none;
+    border: 1px solid #4a5568;
+    color: #a0aec0;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    margin-left: 1rem;
+}
+
+.trashToggleActive {
+    background-color: #4a5568;
+    color: #fff;
+}
