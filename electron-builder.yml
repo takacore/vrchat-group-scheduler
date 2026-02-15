@@ -1,0 +1,22 @@
+appId: com.example.vrchat-scheduler
+productName: VRChat Group Scheduler
+copyright: Copyright © 2026
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - from: .
+    filter:
+      - package.json
+      - app
+publish: null
+
+mac:
+  target: dmg
+  icon: resources/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+win:
+  target: portable
+  icon: resources/icon.ico
