@@ -7,7 +7,7 @@ const USER_AGENT = 'VRChatGroupScheduler/1.0 (contact: admin@localhost)';
 const AUTH_FILE = 'auth.json';
 
 async function getAuthHeaders() {
-    const authData = await readJson(AUTH_FILE, {});
+    const authData = await readJson(AUTH_FILE, {}, { encrypted: true });
     if (!authData.cookies) return { 'User-Agent': USER_AGENT };
 
     return {
@@ -20,7 +20,7 @@ async function saveCookies(response) {
     const setCookie = response.headers.get('set-cookie');
     if (setCookie) {
         // Simple cookie parser/merger
-        const currentAuth = await readJson(AUTH_FILE, {});
+        const currentAuth = await readJson(AUTH_FILE, {}, { encrypted: true });
         let currentCookies = currentAuth.cookies || '';
 
         // Split into individual cookies - this basic split might be fragile for complex set-cookie headers but works for basic VRChat auth
@@ -57,7 +57,7 @@ async function saveCookies(response) {
         // Reconstruct
         const cookieString = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
 
-        await writeJson(AUTH_FILE, { ...currentAuth, cookies: cookieString });
+        await writeJson(AUTH_FILE, { ...currentAuth, cookies: cookieString }, { encrypted: true });
     }
 }
 
