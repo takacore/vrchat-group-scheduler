@@ -1,7 +1,7 @@
 {
   "private": true,
-  "name": "my-nextron-app",
-  "description": "My application description",
+  "name": "vrchat-group-notify-scheduler",
+  "description": "VRChat Group Notify Scheduler",
   "version": "1.0.0",
   "author": "TakaAizu",
   "main": "app/background.js",
