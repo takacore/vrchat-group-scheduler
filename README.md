@@ -3,6 +3,9 @@
 A secure, local Electron application for scheduling VRChat group announcements.
 VRChatのグループお知らせ投稿を予約管理するための、セキュアなローカルElectronアプリケーションです。
 
+使い方動画
+https://drive.google.com/file/d/19oLJXNCheJwVyDH7iHtjL9J8E4tvRUyE/preview
+
 ---
 
 
