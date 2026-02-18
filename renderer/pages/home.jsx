@@ -223,6 +223,45 @@ export default function Dashboard() {
     setError('');
   };
 
+  const handleClone = (post) => {
+    let targetGroupId = post.groupId;
+    const groupExists = groups.some(g => g.groupId === targetGroupId);
+
+    if (!groupExists) {
+      const foundByMemberId = groups.find(g => g.id === targetGroupId);
+      if (foundByMemberId) {
+        targetGroupId = foundByMemberId.groupId;
+      }
+    }
+
+    setGroupId(targetGroupId);
+    setTitle(post.title);
+    setText(post.text);
+    setNotification(post.sendNotification || false);
+    setScheduledAt(''); // Reset time for new schedule
+
+    // Handle Recurrence
+    if (post.recurrence) {
+      setIsRecurring(true);
+      setRecurrenceType(post.recurrence.type);
+      setRecurrenceDays(post.recurrence.days || []);
+    } else {
+      // If cloning a history post (child), checking if parent had recurrence is hard without extra data.
+      // Assuming we just clone exactly what is visible. Children don't have recurrence obj usually.
+      setIsRecurring(false);
+      setRecurrenceDays([]);
+    }
+
+    // If it's a recurring parent status, treat as recurring
+    if (post.status === 'recurring' && !post.recurrence) {
+      // Should have recurrence obj if status is recurring, but just in case
+    }
+
+    setError('');
+    // Scroll to top to see form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleDayToggle = (dayIndex) => {
     if (recurrenceDays.includes(dayIndex)) {
       setRecurrenceDays(recurrenceDays.filter(d => d !== dayIndex));
@@ -421,6 +460,15 @@ export default function Dashboard() {
                   <span className={`${styles.status} ${styles['status' + (post.status.charAt(0).toUpperCase() + post.status.slice(1))]}`}>
                     {post.status}
                   </span>
+
+                  <button
+                    className={styles.retryBtn}
+                    style={{ marginRight: '0.5rem' }}
+                    onClick={() => handleClone(post)}
+                    title="Copy to Form"
+                  >
+                    Clone
+                  </button>
 
                   <button
                     className={styles.deleteBtn}
