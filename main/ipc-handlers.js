@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { login, verify2FA, getCurrentUser, getUserGroups, checkGroupPermission } from './vrchat.js';
+import { login, logout, verify2FA, getCurrentUser, getUserGroups, checkGroupPermission } from './vrchat.js';
 import { addPost, deletePost, getPosts } from './scheduler.js';
 
 export function registerIpcHandlers() {
@@ -15,6 +15,11 @@ export function registerIpcHandlers() {
     ipcMain.handle('auth:get-user', async () => {
         return await getCurrentUser();
     });
+
+    ipcMain.handle('auth:logout', async () => {
+        return await logout();
+    });
+
 
     // Groups
     ipcMain.handle('groups:get-all', async (_, { userId }) => {

@@ -194,6 +194,16 @@ export default function Dashboard() {
     setError('');
   };
 
+  const handleLogout = async () => {
+    try {
+      await window.ipc.invoke('auth:logout');
+      router.push('/login');
+    } catch (err) {
+      console.error('Logout failed', err);
+      setError('Logout failed: ' + err.message);
+    }
+  };
+
   if (loading) return <div className={styles.container}>Loading...</div>;
   if (!user) return null;
 
@@ -204,6 +214,9 @@ export default function Dashboard() {
         <div className={styles.userInfo}>
           <span className={styles.username}>{user.displayName}</span>
           <img src={user.userIcon || 'https://assets.vrchat.com/www/images/default_avatar.png'} className={styles.avatar} alt="Avatar" />
+          <button onClick={handleLogout} className={styles.logoutBtn} style={{ marginLeft: '1rem', padding: '0.25rem 0.5rem', fontSize: '0.8rem', backgroundColor: '#e53e3e', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            Logout
+          </button>
         </div>
       </header>
 

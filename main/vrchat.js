@@ -58,7 +58,13 @@ async function saveCookies(response) {
         const cookieString = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
 
         await writeJson(AUTH_FILE, { ...currentAuth, cookies: cookieString }, { encrypted: true });
+        await writeJson(AUTH_FILE, { ...currentAuth, cookies: cookieString }, { encrypted: true });
     }
+}
+
+export async function logout() {
+    await writeJson(AUTH_FILE, {}, { encrypted: true });
+    return true;
 }
 
 export async function login(username, password) {
@@ -101,6 +107,8 @@ export async function verify2FA(code) {
 
 export async function getCurrentUser() {
     const headers = await getAuthHeaders();
+    if (!headers.Cookie) return null; // No cookies, definitely not logged in
+
     const res = await fetch(`${API_BASE}/auth/user`, { headers });
     if (!res.ok) return null;
     return res.json();
