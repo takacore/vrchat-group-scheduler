@@ -12,10 +12,11 @@ export async function initScheduler() {
     console.log('Initializing Scheduler...');
     const posts = await readJson(POSTS_FILE, []);
 
-    const pendingPosts = posts.filter(p => p.status === 'pending');
-    console.log(`Found ${pendingPosts.length} pending posts.`);
+    // Load pending AND recurring posts
+    const activePosts = posts.filter(p => p.status === 'pending' || p.status === 'recurring');
+    console.log(`Found ${activePosts.length} active posts.`);
 
-    pendingPosts.forEach(post => {
+    activePosts.forEach(post => {
         schedulePostJob(post);
     });
 }
@@ -23,13 +24,34 @@ export async function initScheduler() {
 function schedulePostJob(post) {
     const date = new Date(post.scheduledAt);
 
-    if (date < new Date()) {
+    // Only check past date for non-recurring posts
+    if (!post.recurrence && date < new Date()) {
         console.log(`Post ${post.id} is in the past. Marking as failed/missed.`);
         updatePostStatus(post.id, 'missed', { error: 'Scheduled time passed while app was closed' });
         return;
     }
 
-    const job = schedule.scheduleJob(date, async () => {
+    let rule = date;
+    if (post.recurrence) {
+        rule = new schedule.RecurrenceRule();
+        rule.hour = date.getHours();
+        rule.minute = date.getMinutes();
+
+        // Default to seconds = 0 to avoid multiple firings if not specified
+        rule.second = 0;
+
+        if (post.recurrence.type === 'daily') {
+            // Runs every day at HH:MM
+        } else if (post.recurrence.type === 'weekly') {
+            // days is array of 0-6
+            rule.dayOfWeek = post.recurrence.days;
+        } else if (post.recurrence.type === 'monthly') {
+            rule.date = date.getDate();
+        }
+        console.log(`Scheduling recurring post ${post.id} with rule:`, JSON.stringify(rule));
+    }
+
+    const job = schedule.scheduleJob(rule, async () => {
         console.log(`Executing scheduled post: ${post.title}`);
         try {
             await createGroupPost(post.groupId, {
@@ -39,16 +61,47 @@ function schedulePostJob(post) {
                 sendNotification: post.sendNotification || false,
                 visibility: post.visibility || 'public'
             });
-            await updatePostStatus(post.id, 'posted');
-            console.log(`Post ${post.id} success.`);
+
+            if (post.recurrence) {
+                // For recurring posts, create a history entry
+                console.log(`Recurring post ${post.id} executed. Creating history entry.`);
+                await addPost({
+                    ...post,
+                    id: crypto.randomUUID(), // New ID for history
+                    parentId: post.id,
+                    recurrence: null, // History is not recurring
+                    status: 'posted',
+                    scheduledAt: new Date().toISOString(), // Actual execution time
+                    createdAt: new Date().toISOString()
+                }, true); // true = skip schedule
+            } else {
+                // Normal post
+                await updatePostStatus(post.id, 'posted');
+            }
+            console.log(`Post success.`);
         } catch (err) {
-            console.error(`Post ${post.id} failed:`, err);
-            await updatePostStatus(post.id, 'failed', { error: err.message });
+            console.error(`Post failed:`, err);
+            if (post.recurrence) {
+                await addPost({
+                    ...post,
+                    id: crypto.randomUUID(),
+                    parentId: post.id,
+                    recurrence: null,
+                    status: 'failed',
+                    error: err.message,
+                    scheduledAt: new Date().toISOString(),
+                    createdAt: new Date().toISOString()
+                }, true);
+            } else {
+                await updatePostStatus(post.id, 'failed', { error: err.message });
+            }
         }
     });
 
     jobs.set(post.id, job);
-    console.log(`Scheduled post ${post.id} for ${date.toISOString()}`);
+    if (!post.recurrence) {
+        console.log(`Scheduled post ${post.id} for ${date.toISOString()}`);
+    }
 }
 
 async function updatePostStatus(id, status, extra = {}) {
@@ -60,7 +113,8 @@ async function updatePostStatus(id, status, extra = {}) {
     }
 }
 
-export async function addPost(postData) {
+// Added skipSchedule param
+export async function addPost(postData, skipSchedule = false) {
     const posts = await readJson(POSTS_FILE, []);
 
     const newPost = {
@@ -72,7 +126,10 @@ export async function addPost(postData) {
 
     posts.push(newPost);
     await writeJson(POSTS_FILE, posts);
-    schedulePostJob(newPost);
+
+    if (!skipSchedule) {
+        schedulePostJob(newPost);
+    }
     return newPost;
 }
 
@@ -112,7 +169,5 @@ export async function getPosts(includeDeleted = false, statusFilter = null) {
         posts = posts.filter(p => p.status !== 'deleted');
     }
 
-    // Sort logic can be here or frontend. Let's return raw and sort in frontend or here.
-    // Standardize: return all filtered.
     return posts;
 }
