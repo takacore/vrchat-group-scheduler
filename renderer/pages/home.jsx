@@ -22,6 +22,11 @@ export default function Dashboard() {
   const [scheduledAt, setScheduledAt] = useState('');
   const [notification, setNotification] = useState(false);
 
+  // Recurrence State
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState('daily');
+  const [recurrenceDays, setRecurrenceDays] = useState([]);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -117,11 +122,16 @@ export default function Dashboard() {
         data = data.filter(p => p.status !== 'deleted');
       }
 
-      // Sort: Pending first, then by date desc
+      // Sort: Recurring/Pending first, then by date desc
       data.sort((a, b) => {
-        if (a.status === 'pending' && b.status !== 'pending') return -1;
-        if (a.status !== 'pending' && b.status === 'pending') return 1;
-        return new Date(b.created_at) - new Date(a.created_at);
+        const priorityStatus = ['recurring', 'pending'];
+        const aPrio = priorityStatus.includes(a.status);
+        const bPrio = priorityStatus.includes(b.status);
+
+        if (aPrio && !bPrio) return -1;
+        if (!aPrio && bPrio) return 1;
+
+        return new Date(b.created_at || b.scheduledAt) - new Date(a.created_at || a.scheduledAt);
       });
       setPosts(data);
     } catch (err) {
@@ -137,19 +147,38 @@ export default function Dashboard() {
     if (!groupId || !title || !text || !scheduledAt) return;
     setError('');
 
+    // Prepare recurrence object
+    let recurrence = null;
+    if (isRecurring) {
+      recurrence = {
+        type: recurrenceType
+      };
+      if (recurrenceType === 'weekly') {
+        if (recurrenceDays.length === 0) {
+          setError('Please select at least one day for weekly recurrence.');
+          return;
+        }
+        recurrence.days = recurrenceDays;
+      }
+    }
+
     try {
       const res = await window.ipc.invoke('posts:create', {
         groupId,
         title,
         text,
         scheduledAt: new Date(scheduledAt).toISOString(),
-        sendNotification: notification
+        sendNotification: notification,
+        recurrence,
+        status: isRecurring ? 'recurring' : 'pending'
       });
 
       if (res) { // res is the new post object
         setTitle('');
         setText('');
         setScheduledAt('');
+        setIsRecurring(false);
+        setRecurrenceDays([]);
         fetchPosts();
         alert('Post scheduled!');
       }
@@ -201,6 +230,51 @@ export default function Dashboard() {
     } catch (err) {
       console.error('Logout failed', err);
       setError('Logout failed: ' + err.message);
+    }
+  };
+
+  const handleClone = (post) => {
+    let targetGroupId = post.groupId;
+    const groupExists = groups.some(g => g.groupId === targetGroupId);
+
+    if (!groupExists) {
+      const foundByMemberId = groups.find(g => g.id === targetGroupId);
+      if (foundByMemberId) {
+        targetGroupId = foundByMemberId.groupId;
+      }
+    }
+
+    setGroupId(targetGroupId);
+    setTitle(post.title);
+    setText(post.text);
+    setNotification(post.sendNotification || false);
+    setScheduledAt(''); // Reset time for new schedule
+
+    // Handle Recurrence
+    if (post.recurrence) {
+      setIsRecurring(true);
+      setRecurrenceType(post.recurrence.type);
+      setRecurrenceDays(post.recurrence.days || []);
+    } else {
+      setIsRecurring(false);
+      setRecurrenceDays([]);
+    }
+
+    // If it's a recurring parent status, treat as recurring
+    if (post.status === 'recurring' && !post.recurrence) {
+      // Should have recurrence obj if status is recurring, but just in case
+    }
+
+    setError('');
+    // Scroll to top to see form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDayToggle = (dayIndex) => {
+    if (recurrenceDays.includes(dayIndex)) {
+      setRecurrenceDays(recurrenceDays.filter(d => d !== dayIndex));
+    } else {
+      setRecurrenceDays([...recurrenceDays, dayIndex]);
     }
   };
 
@@ -270,7 +344,7 @@ export default function Dashboard() {
             </div>
 
             <div className={styles.formGroup}>
-              <label className={styles.label}>Schedule Time</label>
+              <label className={styles.label}>Start Time (First Execution)</label>
               <input
                 type="datetime-local"
                 className={styles.input}
@@ -280,6 +354,65 @@ export default function Dashboard() {
               />
             </div>
 
+            <div className={styles.formGroup}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  id="recur"
+                  checked={isRecurring}
+                  onChange={e => setIsRecurring(e.target.checked)}
+                />
+                <label htmlFor="recur" style={{ marginBottom: 0, color: '#fff', fontWeight: 'bold' }}>Repeat Schedule</label>
+              </div>
+
+              {isRecurring && (
+                <div style={{ marginLeft: '1.5rem', padding: '0.5rem', background: '#2d3748', borderRadius: '4px' }}>
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <label className={styles.label} style={{ fontSize: '0.9rem' }}>Frequency</label>
+                    <select
+                      className={styles.select}
+                      style={{ fontSize: '0.9rem', padding: '0.4rem' }}
+                      value={recurrenceType}
+                      onChange={e => setRecurrenceType(e.target.value)}
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+
+                  {recurrenceType === 'weekly' && (
+                    <div>
+                      <label className={styles.label} style={{ fontSize: '0.9rem' }}>Days</label>
+                      <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => handleDayToggle(idx)}
+                            style={{
+                              background: recurrenceDays.includes(idx) ? '#63b3ed' : '#4a5568',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '3px',
+                              padding: '0.3rem 0.5rem',
+                              fontSize: '0.8rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#a0aec0' }}>
+                    Will repeat at the same time as "Start Time".
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className={styles.formGroup} style={{ display: 'flex', gap: '0.5rem' }}>
               <input
                 type="checkbox"
@@ -287,7 +420,7 @@ export default function Dashboard() {
                 checked={notification}
                 onChange={e => setNotification(e.target.checked)}
               />
-              <label htmlFor="noti" style={{ marginBottom: 0, color: '#fff' }}>Send Notification</label>
+              <label htmlFor="noti" style={{ marginBottom: 0, color: '#fff' }}>Send Notification to Group</label>
             </div>
 
             <button type="submit" className={styles.button}>Schedule Post</button>
@@ -318,17 +451,35 @@ export default function Dashboard() {
           <div className={styles.postList}>
             {posts.length === 0 && <p style={{ color: '#718096' }}>No posts found.</p>}
             {posts.map(post => (
-              <div key={post.id} className={styles.postItem}>
+              <div key={post.id} className={styles.postItem} style={post.status === 'recurring' ? { borderLeft: '4px solid #63b3ed', background: '#2a4365' } : {}}>
                 <div className={styles.postInfo}>
-                  <div className={styles.postTitle}>{post.title}</div>
+                  <div className={styles.postTitle}>
+                    {post.status === 'recurring' && <span style={{ fontSize: '0.8rem', background: '#3182ce', padding: '2px 6px', borderRadius: '4px', marginRight: '6px' }}>Repeat</span>}
+                    {post.title}
+                  </div>
                   <div className={styles.postMeta}>
                     {new Date(post.scheduledAt).toLocaleString()} • {post.groupId}
+                    {post.recurrence && (
+                      <div style={{ color: '#90cdf4', fontSize: '0.85rem', marginTop: '2px' }}>
+                        ↻ {post.recurrence.type.charAt(0).toUpperCase() + post.recurrence.type.slice(1)}
+                        {post.recurrence.type === 'weekly' && post.recurrence.days && ` (${post.recurrence.days.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')})`}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                   <span className={`${styles.status} ${styles['status' + (post.status.charAt(0).toUpperCase() + post.status.slice(1))]}`}>
                     {post.status}
                   </span>
+
+                  <button
+                    className={styles.retryBtn}
+                    style={{ marginRight: '0.5rem' }}
+                    onClick={() => handleClone(post)}
+                    title="Copy to Form"
+                  >
+                    Clone
+                  </button>
 
                   <button
                     className={styles.deleteBtn}
