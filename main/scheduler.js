@@ -9,7 +9,11 @@ const POSTS_FILE = 'posts.json';
 const jobs = new Map();
 
 export async function initScheduler() {
-    console.log('Initializing Scheduler...');
+    // Add random offset to avoid synchronized traffic spikes (VRChat API guideline)
+    const randomOffset = Math.floor(Math.random() * 30000); // 0-30 seconds
+    console.log(`Initializing Scheduler with ${randomOffset}ms offset...`);
+    await new Promise(resolve => setTimeout(resolve, randomOffset));
+
     const posts = await readJson(POSTS_FILE, []);
 
     // Load pending AND recurring posts

@@ -16,7 +16,7 @@ export default function Dashboard() {
   // Form State
   const [groupId, setGroupId] = useState('');
   const [groups, setGroups] = useState([]);
-  const [permissionChecking, setPermissionChecking] = useState(false);
+
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
@@ -120,9 +120,9 @@ export default function Dashboard() {
 
   const fetchGroups = async (userId) => {
     try {
-      // IPC Call
+      // IPC Call - returns only groups with Owner or announcement-manage permission
       const data = await window.ipc.invoke('groups:get-all', { userId });
-      // Sort: Owner first, then by name
+      // Sort: Owner first, then permission holders, then by name
       data.sort((a, b) => {
         if (a.isOwner && !b.isOwner) return -1;
         if (!a.isOwner && b.isOwner) return 1;
@@ -135,37 +135,14 @@ export default function Dashboard() {
     }
   };
 
-  const handleGroupChange = async (e) => {
+  const handleGroupChange = (e) => {
     const newGroupId = e.target.value;
     if (!newGroupId) {
       setGroupId('');
       return;
     }
-
-    const fullGroup = groups.find(g => g.groupId === newGroupId);
-    if (!fullGroup) return;
-
-    // Check Owner
-    if (fullGroup.isOwner) {
-      setGroupId(newGroupId);
-      return;
-    }
-
-    // Not Owner -> Check Permissions via IPC
-    setPermissionChecking(true);
-    try {
-      const canPost = await window.ipc.invoke('groups:check-permission', { groupId: newGroupId });
-      if (canPost) {
-        setGroupId(newGroupId);
-      } else {
-        setError('You do not have permission to post to this group (group-announcement-manage required).');
-      }
-    } catch (err) {
-      console.error(err);
-      setError('Failed to check permissions');
-    } finally {
-      setPermissionChecking(false);
-    }
+    // Permission already verified during group list fetch
+    setGroupId(newGroupId);
   };
 
   const fetchPosts = async () => {
@@ -403,13 +380,12 @@ export default function Dashboard() {
                 className={styles.select}
                 value={groupId}
                 onChange={handleGroupChange}
-                disabled={permissionChecking}
                 required
               >
-                <option value="" disabled>Select a group {permissionChecking ? '(Checking permissions...)' : ''}</option>
+                <option value="" disabled>Select a group</option>
                 {groups.map(g => (
                   <option key={g.id} value={g.groupId}>
-                    {g.name} ({g.shortCode}) {g.isOwner ? '★' : ''}
+                    {g.name} ({g.shortCode}) {g.isOwner ? '★' : '◆'}
                   </option>
                 ))}
               </select>
