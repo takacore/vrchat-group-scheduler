@@ -9,7 +9,10 @@ files:
     filter:
       - package.json
       - app
-publish: null
+publish:
+  provider: github
+  owner: takacore
+  repo: vrchat-group-scheduler
 
 mac:
   target: dmg
