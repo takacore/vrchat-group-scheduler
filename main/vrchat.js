@@ -11,7 +11,7 @@ const AUTH_FILE = 'auth.json';
 
 // --- Rate Limiter & Backoff ---
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 1000; // 1 second minimum between requests
+const MIN_REQUEST_INTERVAL = 200; // 200ms minimum between requests
 
 async function apiRequest(url, options = {}) {
     // Rate limiting: ensure minimum interval between requests
@@ -243,6 +243,7 @@ export async function getUserGroups(userId) {
     if (cached) return cached;
 
     const headers = await getAuthHeaders();
+    console.log(`[VRChat API] Fetching groups for user ${userId}...`);
     const res = await apiRequest(`${API_BASE}/users/${userId}/groups`, { headers });
 
     if (res.status === 404) return [];
@@ -253,6 +254,7 @@ export async function getUserGroups(userId) {
     }
 
     const allGroups = await res.json();
+    console.log(`[VRChat API] Found ${allGroups.length} groups. Checking permissions...`);
 
     // Check permissions for each group and filter
     const groupsWithPermissions = [];
@@ -263,21 +265,29 @@ export async function getUserGroups(userId) {
             groupsWithPermissions.push({
                 ...group,
                 isOwner: true,
-                hasAnnouncementPermission: true, // Owner has all permissions
+                hasAnnouncementPermission: true,
             });
+            console.log(`[VRChat API] Group "${group.name}" - Owner ★`);
         } else {
-            const hasPermission = await checkAnnouncementPermission(group.groupId);
-            if (hasPermission) {
-                groupsWithPermissions.push({
-                    ...group,
-                    isOwner: false,
-                    hasAnnouncementPermission: true,
-                });
+            try {
+                const hasPermission = await checkAnnouncementPermission(group.groupId);
+                if (hasPermission) {
+                    groupsWithPermissions.push({
+                        ...group,
+                        isOwner: false,
+                        hasAnnouncementPermission: true,
+                    });
+                    console.log(`[VRChat API] Group "${group.name}" - Has announcement permission ◆`);
+                } else {
+                    console.log(`[VRChat API] Group "${group.name}" - No permission, skipped`);
+                }
+            } catch (err) {
+                console.warn(`[VRChat API] Permission check failed for group "${group.name}" (${group.groupId}): ${err.message}`);
             }
-            // Skip groups without permission
         }
     }
 
+    console.log(`[VRChat API] Filtered: ${groupsWithPermissions.length}/${allGroups.length} groups have posting permission.`);
     setCache(cacheKey, groupsWithPermissions);
     return groupsWithPermissions;
 }
