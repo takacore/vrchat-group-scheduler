@@ -12,6 +12,8 @@ export default function Dashboard() {
   // UX State
   const [error, setError] = useState('');
   const [showTrash, setShowTrash] = useState(false);
+  const [groupRefreshing, setGroupRefreshing] = useState(false);
+  const [refreshCooldown, setRefreshCooldown] = useState(0);
 
   // Form State
   const [groupId, setGroupId] = useState('');
@@ -118,22 +120,58 @@ export default function Dashboard() {
     }
   };
 
+  const sortGroups = (data) => {
+    return [...data].sort((a, b) => {
+      if (a.isOwner && !b.isOwner) return -1;
+      if (!a.isOwner && b.isOwner) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  };
+
   const fetchGroups = async (userId) => {
     try {
-      // IPC Call - returns only groups with Owner or announcement-manage permission
       const data = await window.ipc.invoke('groups:get-all', { userId });
-      // Sort: Owner first, then permission holders, then by name
-      data.sort((a, b) => {
-        if (a.isOwner && !b.isOwner) return -1;
-        if (!a.isOwner && b.isOwner) return 1;
-        return a.name.localeCompare(b.name);
-      });
-      setGroups(data);
+      setGroups(sortGroups(data));
     } catch (err) {
       console.error('Failed to fetch groups', err);
       setError('Failed to fetch groups: ' + err.message);
     }
   };
+
+  const handleRefreshGroups = async () => {
+    if (groupRefreshing || refreshCooldown > 0) return;
+    setGroupRefreshing(true);
+    try {
+      const result = await window.ipc.invoke('groups:refresh', { userId: user?.id });
+      if (result.refreshed) {
+        setGroups(sortGroups(result.groups));
+        setRefreshCooldown(300); // 5 minutes in seconds
+      } else if (result.cooldownRemaining > 0) {
+        setRefreshCooldown(result.cooldownRemaining);
+        setGroups(sortGroups(result.groups));
+      }
+    } catch (err) {
+      console.error('Failed to refresh groups', err);
+      setError('グループの更新に失敗しました: ' + err.message);
+    } finally {
+      setGroupRefreshing(false);
+    }
+  };
+
+  // Cooldown timer
+  useEffect(() => {
+    if (refreshCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setRefreshCooldown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [refreshCooldown]);
 
   const handleGroupChange = (e) => {
     const newGroupId = e.target.value;
@@ -141,7 +179,6 @@ export default function Dashboard() {
       setGroupId('');
       return;
     }
-    // Permission already verified during group list fetch
     setGroupId(newGroupId);
   };
 
@@ -389,6 +426,23 @@ export default function Dashboard() {
                   </option>
                 ))}
               </select>
+              <div style={{ marginTop: '0.3rem', fontSize: '0.75rem', textAlign: 'right' }}>
+                <span
+                  onClick={handleRefreshGroups}
+                  style={{
+                    color: (groupRefreshing || refreshCooldown > 0) ? '#4a5568' : '#63b3ed',
+                    cursor: (groupRefreshing || refreshCooldown > 0) ? 'default' : 'pointer',
+                    textDecoration: (groupRefreshing || refreshCooldown > 0) ? 'none' : 'underline',
+                  }}
+                >
+                  {groupRefreshing
+                    ? '更新中...'
+                    : refreshCooldown > 0
+                      ? `グループ更新 (${Math.floor(refreshCooldown / 60)}:${String(refreshCooldown % 60).padStart(2, '0')})`
+                      : 'グループが見つからない場合はこちら'
+                  }
+                </span>
+              </div>
             </div>
 
             <div className={styles.formGroup}>

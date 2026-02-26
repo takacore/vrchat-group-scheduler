@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { login, logout, verify2FA, getCurrentUser, getUserGroups } from './vrchat.js';
+import { login, logout, verify2FA, getCurrentUser, getUserGroups, refreshUserGroups } from './vrchat.js';
 import { addPost, deletePost, getPosts } from './scheduler.js';
 import { checkForUpdates, getUpdateSettings, saveUpdateSettings, openDownloadPage } from './updater.js';
 
@@ -21,7 +21,7 @@ export function registerIpcHandlers() {
         return await logout();
     });
 
-    // Groups (filtered by permission in getUserGroups)
+    // Groups (filtered by permission in getUserGroups, with persistent cache)
     ipcMain.handle('groups:get-all', async (_, { userId }) => {
         if (!userId) {
             const user = await getCurrentUser();
@@ -29,6 +29,15 @@ export function registerIpcHandlers() {
             userId = user.id;
         }
         return await getUserGroups(userId);
+    });
+
+    ipcMain.handle('groups:refresh', async (_, { userId }) => {
+        if (!userId) {
+            const user = await getCurrentUser();
+            if (!user) throw new Error('Not logged in');
+            userId = user.id;
+        }
+        return await refreshUserGroups(userId);
     });
 
     // Posts
