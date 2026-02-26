@@ -27,8 +27,27 @@ export default function Dashboard() {
   const [recurrenceType, setRecurrenceType] = useState('daily');
   const [recurrenceDays, setRecurrenceDays] = useState([]);
 
+  // Update State
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [updateSettings, setUpdateSettings] = useState({ channel: 'stable', autoCheck: true });
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState(null);
+
   useEffect(() => {
     checkAuth();
+    loadUpdateSettings();
+
+    // Listen for auto-update notification from main process
+    const unsubscribe = window.ipc.on('updater:update-available', (data) => {
+      setUpdateInfo(data);
+      setShowUpdateBanner(true);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   // Fetch posts whenever showTrash changes
@@ -37,6 +56,48 @@ export default function Dashboard() {
       fetchPosts();
     }
   }, [showTrash, user]);
+
+  const loadUpdateSettings = async () => {
+    try {
+      const settings = await window.ipc.invoke('updater:get-settings');
+      setUpdateSettings(settings);
+    } catch (err) {
+      console.error('Failed to load update settings:', err);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      const saved = await window.ipc.invoke('updater:save-settings', updateSettings);
+      setUpdateSettings(saved);
+      setShowSettings(false);
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+    }
+  };
+
+  const handleCheckUpdate = async () => {
+    setChecking(true);
+    setCheckResult(null);
+    try {
+      const result = await window.ipc.invoke('updater:check', { channel: updateSettings.channel });
+      setCheckResult(result);
+      if (result.updateAvailable) {
+        setUpdateInfo(result);
+        setShowUpdateBanner(true);
+      }
+    } catch (err) {
+      setCheckResult({ error: err.message || 'アップデートの確認に失敗しました' });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleOpenDownload = async () => {
+    if (updateInfo?.downloadUrl) {
+      await window.ipc.invoke('updater:open-download', { url: updateInfo.downloadUrl });
+    }
+  };
 
   const checkAuth = async () => {
     try {
@@ -286,6 +347,14 @@ export default function Dashboard() {
       <header className={styles.header}>
         <div className={styles.title}>VRChat Scheduler (Local)</div>
         <div className={styles.userInfo}>
+          <span className={styles.versionInfo}>v{updateInfo?.currentVersion || '1.0.0'}</span>
+          <button
+            className={styles.settingsBtn}
+            onClick={() => setShowSettings(true)}
+            title="設定"
+          >
+            ⚙
+          </button>
           <span className={styles.username}>{user.displayName}</span>
           <img src={user.userIcon || 'https://assets.vrchat.com/www/images/default_avatar.png'} className={styles.avatar} alt="Avatar" />
           <button onClick={handleLogout} className={styles.logoutBtn} style={{ marginLeft: '1rem', padding: '0.25rem 0.5rem', fontSize: '0.8rem', backgroundColor: '#e53e3e', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
@@ -298,6 +367,29 @@ export default function Dashboard() {
         <div className={styles.errorBanner}>
           <span>{error}</span>
           <button className={styles.closeError} onClick={() => setError('')}>×</button>
+        </div>
+      )}
+
+      {showUpdateBanner && updateInfo && (
+        <div className={styles.updateBanner}>
+          <div className={styles.updateBannerInfo}>
+            <div className={styles.updateBannerTitle}>
+              🚀 新しいバージョンが利用可能です
+              {updateInfo.isBeta && <span className={styles.betaBadge}>BETA</span>}
+            </div>
+            <div className={styles.updateBannerMeta}>
+              v{updateInfo.currentVersion} → v{updateInfo.latestVersion}
+              {updateInfo.releaseNotes && ` — ${updateInfo.releaseNotes.split('\n')[0].substring(0, 80)}`}
+            </div>
+          </div>
+          <div className={styles.updateBannerActions}>
+            <button className={styles.updateDownloadBtn} onClick={handleOpenDownload}>
+              ダウンロード
+            </button>
+            <button className={styles.updateDismissBtn} onClick={() => setShowUpdateBanner(false)}>
+              後で
+            </button>
+          </div>
         </div>
       )}
 
@@ -504,6 +596,67 @@ export default function Dashboard() {
           </div>
         </section>
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className={styles.settingsOverlay} onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
+          <div className={styles.settingsModal}>
+            <div className={styles.settingsTitle}>⚙ アップデート設定</div>
+
+            <div className={styles.settingsGroup}>
+              <label className={styles.settingsLabel}>更新チャネル</label>
+              <select
+                className={styles.settingsSelect}
+                value={updateSettings.channel}
+                onChange={(e) => setUpdateSettings({ ...updateSettings, channel: e.target.value })}
+              >
+                <option value="stable">Stable（安定版）</option>
+                <option value="beta">Beta（ベータ版 — プレリリースを含む）</option>
+              </select>
+            </div>
+
+            <div className={styles.settingsGroup}>
+              <label className={styles.settingsCheckbox}>
+                <input
+                  type="checkbox"
+                  checked={updateSettings.autoCheck}
+                  onChange={(e) => setUpdateSettings({ ...updateSettings, autoCheck: e.target.checked })}
+                />
+                起動時に自動でアップデートを確認する
+              </label>
+            </div>
+
+            <div className={styles.settingsGroup}>
+              <button
+                className={styles.settingsCheckBtn}
+                onClick={handleCheckUpdate}
+                disabled={checking}
+              >
+                {checking ? '確認中...' : 'アップデートを確認'}
+              </button>
+
+              {checkResult && !checkResult.error && (
+                <div className={`${styles.settingsResult} ${checkResult.updateAvailable ? styles.settingsResultUpdate : styles.settingsResultOk}`}>
+                  {checkResult.updateAvailable
+                    ? `🚀 v${checkResult.latestVersion} が利用可能です！${checkResult.isBeta ? '（Beta）' : ''}`
+                    : `✅ 最新版です（v${checkResult.currentVersion}）`
+                  }
+                </div>
+              )}
+              {checkResult?.error && (
+                <div className={`${styles.settingsResult} ${styles.settingsResultError}`}>
+                  ❌ {checkResult.error}
+                </div>
+              )}
+            </div>
+
+            <div className={styles.settingsActions}>
+              <button className={styles.settingsSaveBtn} onClick={handleSaveSettings}>保存</button>
+              <button className={styles.settingsCloseBtn} onClick={() => setShowSettings(false)}>閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
