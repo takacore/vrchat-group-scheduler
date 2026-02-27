@@ -8,7 +8,6 @@ const pkg = require('../package.json');
 const API_BASE = 'https://api.vrchat.cloud/api/1';
 const USER_AGENT = `VRChatGroupScheduler/${pkg.version} ai.takacore@gmail.com`;
 const AUTH_FILE = 'auth.json';
-const GROUP_CACHE_FILE = 'group-permissions.json';
 
 // --- Rate Limiter & Backoff ---
 let lastRequestTime = 0;
@@ -72,12 +71,12 @@ function setMemCache(key, data) {
 const GROUP_CACHE_TTL = 30 * 60 * 1000; // 30 minutes before auto-refresh
 const REFRESH_COOLDOWN = 5 * 60 * 1000; // 5 minutes cooldown for manual refresh
 
-async function loadGroupCache() {
-    return await readJson(GROUP_CACHE_FILE, { lastFullCheck: null, lastRefresh: null, groups: {} });
+async function loadGroupCache(userId) {
+    return await readJson(`group-permissions-${userId}.json`, { lastFullCheck: null, lastRefresh: null, groups: {} });
 }
 
-async function saveGroupCache(cache) {
-    await writeJson(GROUP_CACHE_FILE, cache);
+async function saveGroupCache(userId, cache) {
+    await writeJson(`group-permissions-${userId}.json`, cache);
 }
 
 // --- Auth ---
@@ -368,7 +367,7 @@ function buildFilteredGroupList(groupsCache) {
 }
 
 export async function getUserGroups(userId) {
-    const cache = await loadGroupCache();
+    const cache = await loadGroupCache(userId);
     const now = Date.now();
 
     // Case 1: Cache exists and is fresh (< 30 minutes) → return from cache
@@ -398,7 +397,7 @@ export async function getUserGroups(userId) {
         lastRefresh: cache.lastRefresh,
         groups: updatedGroups,
     };
-    await saveGroupCache(newCache);
+    await saveGroupCache(userId, newCache);
 
     const result = buildFilteredGroupList(updatedGroups);
     console.log(`[VRChat API] Filtered: ${result.length}/${allGroups.length} groups have posting permission.`);
@@ -406,7 +405,7 @@ export async function getUserGroups(userId) {
 }
 
 export async function refreshUserGroups(userId, onProgress = null) {
-    const cache = await loadGroupCache();
+    const cache = await loadGroupCache(userId);
     const now = Date.now();
 
     // Check cooldown
@@ -432,7 +431,7 @@ export async function refreshUserGroups(userId, onProgress = null) {
         lastRefresh: new Date().toISOString(),
         groups: updatedGroups,
     };
-    await saveGroupCache(newCache);
+    await saveGroupCache(userId, newCache);
 
     const result = buildFilteredGroupList(updatedGroups);
     console.log(`[VRChat API] Refresh complete: ${result.length}/${allGroups.length} groups have posting permission.`);
