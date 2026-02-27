@@ -19,10 +19,12 @@ mac:
   icon: resources/icon.icns
   hardenedRuntime: true
   gatekeeperAssess: false
+  artifactName: "${productName}-${version}-mac.${ext}"
 
 win:
   target: nsis
   icon: resources/icon.ico
+  artifactName: "${productName}-Setup-${version}.${ext}"
 
 nsis:
   oneClick: true

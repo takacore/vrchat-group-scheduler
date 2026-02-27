@@ -43,7 +43,7 @@ initScheduler().catch(console.error)
       mainWindow.webContents.openDevTools()
     }
 
-    // Initialize electron-updater (Windows auto-update)
+    // Initialize electron-updater event listeners
     initAutoUpdater(mainWindow)
 
     // Auto-update check on startup (delayed to avoid blocking)
@@ -51,15 +51,20 @@ initScheduler().catch(console.error)
       try {
         const settings = await getUpdateSettings()
         if (settings.autoCheck) {
+          // Use GitHub API to check for updates (works on all platforms)
+          const result = await checkForUpdates(settings.channel)
+          console.log('[Updater] Update check result:', JSON.stringify({
+            updateAvailable: result.updateAvailable,
+            currentVersion: result.currentVersion,
+            latestVersion: result.latestVersion,
+          }))
+          if (result.updateAvailable) {
+            mainWindow.webContents.send('updater:update-available', result)
+          }
+
+          // Also trigger electron-updater check (for auto-download on Windows)
           if (process.platform === 'win32') {
-            // Windows: use electron-updater for seamless auto-update
             await autoCheckForUpdates(settings.channel)
-          } else {
-            // macOS/Linux: use GitHub API check (no code signing = no auto-update)
-            const result = await checkForUpdates(settings.channel)
-            if (result.updateAvailable) {
-              mainWindow.webContents.send('updater:update-available', result)
-            }
           }
         }
       } catch (err) {
