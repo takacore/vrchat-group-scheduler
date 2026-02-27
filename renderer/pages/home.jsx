@@ -446,7 +446,7 @@ export default function Dashboard() {
             ⚙
           </button>
           <span className={styles.username}>{user.displayName}</span>
-          <img src={user.userIcon || 'https://assets.vrchat.com/www/images/default_avatar.png'} className={styles.avatar} alt="Avatar" />
+          <img src={user.userIcon || '/default-avatar.png'} className={styles.avatar} alt="Avatar" />
           <button onClick={handleLogout} className={styles.logoutBtn} style={{ marginLeft: '1rem', padding: '0.25rem 0.5rem', fontSize: '0.8rem', backgroundColor: '#e53e3e', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
             Logout
           </button>
