@@ -262,16 +262,12 @@ async function checkAndCachePermissions(allGroups, userId, existingCache) {
             if (cached && cached.checkedAt) {
                 // Use cached result - don't re-check
                 updatedGroups[gid] = { ...cached, groupData: group, name: group.name, shortCode: group.shortCode };
-                // Added progress update for cached items
-                if (onProgress) {
-                    onProgress({ phase: 'checking', current: i + 1, total: totalGroups, groupName: group.name });
-                }
                 continue;
             }
 
             // New group - need to check permission
             try {
-                const hasPermission = await checkAnnouncementPermission(gid, onProgress, group.name); // Added onProgress, group.name
+                const hasPermission = await checkAnnouncementPermission(gid);
                 updatedGroups[gid] = {
                     name: group.name,
                     shortCode: group.shortCode,
