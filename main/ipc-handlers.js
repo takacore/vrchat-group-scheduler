@@ -31,13 +31,20 @@ export function registerIpcHandlers() {
         return await getUserGroups(userId);
     });
 
-    ipcMain.handle('groups:refresh', async (_, { userId }) => {
+    ipcMain.handle('groups:refresh', async (event, { userId }) => {
         if (!userId) {
             const user = await getCurrentUser();
             if (!user) throw new Error('Not logged in');
             userId = user.id;
         }
-        return await refreshUserGroups(userId);
+        const onProgress = (progress) => {
+            try {
+                event.sender.send('groups:scan-progress', progress);
+            } catch (e) {
+                // Window may have been closed
+            }
+        };
+        return await refreshUserGroups(userId, onProgress);
     });
 
     // Posts

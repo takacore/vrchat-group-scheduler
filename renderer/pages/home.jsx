@@ -14,6 +14,8 @@ export default function Dashboard() {
   const [showTrash, setShowTrash] = useState(false);
   const [groupRefreshing, setGroupRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
+  const [showScanConfirm, setShowScanConfirm] = useState(false);
+  const [scanProgress, setScanProgress] = useState(null); // { current, total, groupName, phase }
 
   // Form State
   const [groupId, setGroupId] = useState('');
@@ -42,13 +44,19 @@ export default function Dashboard() {
     loadUpdateSettings();
 
     // Listen for auto-update notification from main process
-    const unsubscribe = window.ipc.on('updater:update-available', (data) => {
+    const unsubUpdate = window.ipc.on('updater:update-available', (data) => {
       setUpdateInfo(data);
       setShowUpdateBanner(true);
     });
 
+    // Listen for group scan progress
+    const unsubScan = window.ipc.on('groups:scan-progress', (data) => {
+      setScanProgress(data);
+    });
+
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (unsubUpdate) unsubUpdate();
+      if (unsubScan) unsubScan();
     };
   }, []);
 
@@ -130,22 +138,47 @@ export default function Dashboard() {
 
   const fetchGroups = async (userId) => {
     try {
-      const data = await window.ipc.invoke('groups:get-all', { userId });
-      setGroups(sortGroups(data));
+      const result = await window.ipc.invoke('groups:get-all', { userId });
+      if (result.needsScan) {
+        // First time - show confirmation dialog
+        setShowScanConfirm(true);
+      } else {
+        setGroups(sortGroups(result.groups));
+      }
     } catch (err) {
       console.error('Failed to fetch groups', err);
       setError('Failed to fetch groups: ' + err.message);
     }
   };
 
-  const handleRefreshGroups = async () => {
-    if (groupRefreshing || refreshCooldown > 0) return;
+  const startGroupScan = async () => {
+    setShowScanConfirm(false);
     setGroupRefreshing(true);
+    setScanProgress({ current: 0, total: 0, groupName: '', phase: 'fetching' });
     try {
       const result = await window.ipc.invoke('groups:refresh', { userId: user?.id });
       if (result.refreshed) {
         setGroups(sortGroups(result.groups));
-        setRefreshCooldown(300); // 5 minutes in seconds
+        setRefreshCooldown(300);
+      }
+    } catch (err) {
+      console.error('Failed to scan groups', err);
+      setError('グループのスキャンに失敗しました: ' + err.message);
+    } finally {
+      setGroupRefreshing(false);
+      setScanProgress(null);
+    }
+  };
+
+  const handleRefreshGroups = async () => {
+    if (groupRefreshing || refreshCooldown > 0) return;
+    setGroupRefreshing(true);
+    setScanProgress({ current: 0, total: 0, groupName: '', phase: 'fetching' });
+    try {
+      const result = await window.ipc.invoke('groups:refresh', { userId: user?.id });
+      if (result.refreshed) {
+        setGroups(sortGroups(result.groups));
+        setRefreshCooldown(300);
       } else if (result.cooldownRemaining > 0) {
         setRefreshCooldown(result.cooldownRemaining);
         setGroups(sortGroups(result.groups));
@@ -155,6 +188,7 @@ export default function Dashboard() {
       setError('グループの更新に失敗しました: ' + err.message);
     } finally {
       setGroupRefreshing(false);
+      setScanProgress(null);
     }
   };
 
@@ -376,6 +410,62 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
+
+      {/* Initial Scan Confirmation Dialog */}
+      {showScanConfirm && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
+            <h3 className={styles.modalTitle}>グループ権限のスキャン</h3>
+            <p className={styles.modalText}>
+              投稿権限のあるグループを確認するため、参加中のグループをスキャンします。
+              <br /><br />
+              <span style={{ color: '#a0aec0', fontSize: '0.85rem' }}>
+                ※ 初回のみ全グループの権限を確認します。スキャン結果はキャッシュされるため、2回目以降はすぐに表示されます。
+              </span>
+            </p>
+            <div className={styles.modalActions}>
+              <button className={styles.scanStartBtn} onClick={startGroupScan}>
+                スキャンを開始
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scan Progress Modal */}
+      {scanProgress && groupRefreshing && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
+            <h3 className={styles.modalTitle}>グループをスキャン中...</h3>
+            <div className={styles.scanProgressContainer}>
+              <div className={styles.scanProgressBar}>
+                <div
+                  className={styles.scanProgressFill}
+                  style={{
+                    width: scanProgress.total > 0
+                      ? `${(scanProgress.current / scanProgress.total) * 100}%`
+                      : '0%'
+                  }}
+                />
+              </div>
+              <div className={styles.scanProgressInfo}>
+                {scanProgress.phase === 'fetching' ? (
+                  <span>グループ一覧を取得中...</span>
+                ) : (
+                  <>
+                    <span className={styles.scanProgressCount}>
+                      {scanProgress.current} / {scanProgress.total}
+                    </span>
+                    <span className={styles.scanProgressName}>
+                      {scanProgress.groupName}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className={styles.errorBanner}>

@@ -251,8 +251,15 @@
 }
 
 @keyframes slideDown {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .updateBannerInfo {
@@ -359,8 +366,13 @@
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .settingsModal {
@@ -374,8 +386,15 @@
 }
 
 @keyframes modalSlide {
-    from { opacity: 0; transform: translateY(20px) scale(0.95); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .settingsTitle {
@@ -505,4 +524,109 @@
     font-size: 0.75rem;
     color: #718096;
     margin-right: 0.75rem;
+}
+
+/* Group Scan Modal */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modalContent {
+    background-color: #2d3748;
+    border-radius: 12px;
+    padding: 2rem;
+    width: 90%;
+    max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: modalSlide 0.3s ease-out;
+}
+
+.modalTitle {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 1rem;
+}
+
+.modalText {
+    color: #cbd5e0;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+}
+
+.modalActions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.scanStartBtn {
+    padding: 0.65rem 1.5rem;
+    border-radius: 6px;
+    border: none;
+    background-color: #3182ce;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.scanStartBtn:hover {
+    background-color: #2b6cb0;
+}
+
+/* Scan Progress */
+.scanProgressContainer {
+    margin-top: 0.5rem;
+}
+
+.scanProgressBar {
+    width: 100%;
+    height: 6px;
+    background-color: #4a5568;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+}
+
+.scanProgressFill {
+    height: 100%;
+    background: linear-gradient(90deg, #3182ce, #63b3ed);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.scanProgressInfo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: #a0aec0;
+    min-height: 1.2rem;
+}
+
+.scanProgressCount {
+    font-weight: 600;
+    color: #63b3ed;
+    flex-shrink: 0;
+}
+
+.scanProgressName {
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-left: 1rem;
+    max-width: 250px;
 }

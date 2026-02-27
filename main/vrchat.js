@@ -295,15 +295,21 @@ async function checkAndCachePermissions(allGroups, userId, existingCache) {
     return updatedGroups;
 }
 
-async function forceCheckAllPermissions(allGroups, userId) {
+async function forceCheckAllPermissions(allGroups, userId, onProgress = null) {
     const now = new Date().toISOString();
     const updatedGroups = {};
+    const total = allGroups.length;
 
-    console.log(`[VRChat API] Force refreshing permissions for ${allGroups.length} groups...`);
+    console.log(`[VRChat API] Force refreshing permissions for ${total} groups...`);
 
-    for (const group of allGroups) {
+    for (let i = 0; i < allGroups.length; i++) {
+        const group = allGroups[i];
         const gid = group.groupId;
         const isOwner = group.ownerId === userId;
+
+        if (onProgress) {
+            onProgress({ current: i + 1, total, groupName: group.name, phase: 'checking' });
+        }
 
         if (isOwner) {
             updatedGroups[gid] = {
@@ -343,6 +349,10 @@ async function forceCheckAllPermissions(allGroups, userId) {
         }
     }
 
+    if (onProgress) {
+        onProgress({ current: total, total, groupName: '', phase: 'done' });
+    }
+
     return updatedGroups;
 }
 
@@ -366,14 +376,20 @@ export async function getUserGroups(userId) {
         const cacheAge = now - new Date(cache.lastFullCheck).getTime();
         if (cacheAge < GROUP_CACHE_TTL && Object.keys(cache.groups).length > 0) {
             console.log(`[VRChat API] Using cached group permissions (age: ${Math.round(cacheAge / 1000)}s)`);
-            return buildFilteredGroupList(cache.groups);
+            return { groups: buildFilteredGroupList(cache.groups), needsScan: false };
         }
     }
 
-    // Case 2: Cache expired or doesn't exist → fetch groups + smart permission check
-    console.log(`[VRChat API] Cache expired or missing. Fetching groups for user ${userId}...`);
+    // Case 2: No cache at all → return empty + needsScan flag (initial setup)
+    if (!cache.lastFullCheck || Object.keys(cache.groups).length === 0) {
+        console.log(`[VRChat API] No group cache found. Scan required.`);
+        return { groups: [], needsScan: true };
+    }
+
+    // Case 3: Cache expired → smart permission check (use cached results where available)
+    console.log(`[VRChat API] Cache expired. Fetching groups for user ${userId}...`);
     const allGroups = await fetchAllGroupsFromAPI(userId);
-    console.log(`[VRChat API] Found ${allGroups.length} groups. Checking permissions (using cached results where available)...`);
+    console.log(`[VRChat API] Found ${allGroups.length} groups. Smart-checking permissions...`);
 
     const updatedGroups = await checkAndCachePermissions(allGroups, userId, cache);
 
@@ -386,10 +402,10 @@ export async function getUserGroups(userId) {
 
     const result = buildFilteredGroupList(updatedGroups);
     console.log(`[VRChat API] Filtered: ${result.length}/${allGroups.length} groups have posting permission.`);
-    return result;
+    return { groups: result, needsScan: false };
 }
 
-export async function refreshUserGroups(userId) {
+export async function refreshUserGroups(userId, onProgress = null) {
     const cache = await loadGroupCache();
     const now = Date.now();
 
@@ -407,8 +423,9 @@ export async function refreshUserGroups(userId) {
 
     // Force refresh - re-fetch all groups and re-check ALL permissions
     console.log(`[VRChat API] Manual refresh triggered. Fetching all groups...`);
+    if (onProgress) onProgress({ current: 0, total: 0, groupName: '', phase: 'fetching' });
     const allGroups = await fetchAllGroupsFromAPI(userId);
-    const updatedGroups = await forceCheckAllPermissions(allGroups, userId);
+    const updatedGroups = await forceCheckAllPermissions(allGroups, userId, onProgress);
 
     const newCache = {
         lastFullCheck: new Date().toISOString(),
