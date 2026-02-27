@@ -630,3 +630,113 @@
     margin-left: 1rem;
     max-width: 250px;
 }
+
+/* Toast Notification */
+.toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    z-index: 1200;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 2.7s forwards;
+    max-width: 360px;
+}
+
+.toastSuccess {
+    background-color: #276749;
+    color: #c6f6d5;
+    border: 1px solid #38a169;
+}
+
+.toastError {
+    background-color: #742a2a;
+    color: #fed7d7;
+    border: 1px solid #e53e3e;
+}
+
+.toastClose {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 1.1rem;
+    cursor: pointer;
+    opacity: 0.7;
+    margin-left: 0.5rem;
+    padding: 0;
+    line-height: 1;
+}
+
+.toastClose:hover {
+    opacity: 1;
+}
+
+@keyframes toastIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes toastOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+}
+
+/* Confirm Dialog */
+.confirmActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.confirmCancelBtn {
+    padding: 0.6rem 1.25rem;
+    border-radius: 6px;
+    border: 1px solid #4a5568;
+    background: none;
+    color: #a0aec0;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.confirmCancelBtn:hover {
+    background-color: #4a5568;
+    color: #fff;
+}
+
+.confirmOkBtn {
+    padding: 0.6rem 1.25rem;
+    border-radius: 6px;
+    border: none;
+    background-color: #e53e3e;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.confirmOkBtn:hover {
+    background-color: #c53030;
+}

@@ -16,6 +16,8 @@ export default function Dashboard() {
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [showScanConfirm, setShowScanConfirm] = useState(false);
   const [scanProgress, setScanProgress] = useState(null); // { current, total, groupName, phase }
+  const [toast, setToast] = useState(null); // { message, type: 'success'|'error' }
+  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
 
   // Form State
   const [groupId, setGroupId] = useState('');
@@ -291,7 +293,7 @@ export default function Dashboard() {
         setIsRecurring(false);
         setRecurrenceDays([]);
         fetchPosts();
-        alert('Post scheduled!');
+        setToast({ message: '投稿をスケジュールしました！', type: 'success' });
       }
     } catch (err) {
       setError('Error: ' + err.message);
@@ -300,18 +302,21 @@ export default function Dashboard() {
 
   const handleDelete = async (id) => {
     const isTrash = showTrash;
-    const msg = isTrash ? 'Permanently delete this post?' : 'Move this post to trash?';
+    const msg = isTrash ? 'この投稿を完全に削除しますか？' : 'この投稿をゴミ箱に移動しますか？';
 
-    if (!confirm(msg)) return;
-    try {
-      await window.ipc.invoke('posts:delete', {
-        id,
-        force: isTrash
-      });
-      fetchPosts();
-    } catch (err) {
-      setError(err.message);
-    }
+    setConfirmDialog({
+      message: msg,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          await window.ipc.invoke('posts:delete', { id, force: isTrash });
+          fetchPosts();
+          setToast({ message: isTrash ? '投稿を削除しました' : 'ゴミ箱に移動しました', type: 'success' });
+        } catch (err) {
+          setError(err.message);
+        }
+      }
+    });
   };
 
   const handleRetry = (post) => {
@@ -775,6 +780,40 @@ export default function Dashboard() {
             <div className={styles.settingsActions}>
               <button className={styles.settingsSaveBtn} onClick={handleSaveSettings}>保存</button>
               <button className={styles.settingsCloseBtn} onClick={() => setShowSettings(false)}>閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`${styles.toast} ${styles[toast.type === 'success' ? 'toastSuccess' : 'toastError']}`}
+          onAnimationEnd={(e) => {
+            if (e.animationName.includes('fadeOut') || e.animationName.includes('slideOut')) {
+              setToast(null);
+            }
+          }}
+        >
+          <span>{toast.type === 'success' ? '✓' : '✕'}</span>
+          <span>{toast.message}</span>
+          <button className={styles.toastClose} onClick={() => setToast(null)}>×</button>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      {confirmDialog && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
+            <h3 className={styles.modalTitle}>確認</h3>
+            <p className={styles.modalText}>{confirmDialog.message}</p>
+            <div className={styles.confirmActions}>
+              <button className={styles.confirmCancelBtn} onClick={() => setConfirmDialog(null)}>
+                キャンセル
+              </button>
+              <button className={styles.confirmOkBtn} onClick={confirmDialog.onConfirm}>
+                OK
+              </button>
             </div>
           </div>
         </div>
