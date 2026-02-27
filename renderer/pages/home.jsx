@@ -12,11 +12,15 @@ export default function Dashboard() {
   // UX State
   const [error, setError] = useState('');
   const [showTrash, setShowTrash] = useState(false);
+  const [groupRefreshing, setGroupRefreshing] = useState(false);
+  const [refreshCooldown, setRefreshCooldown] = useState(0);
+  const [showScanConfirm, setShowScanConfirm] = useState(false);
+  const [scanProgress, setScanProgress] = useState(null); // { current, total, groupName, phase }
 
   // Form State
   const [groupId, setGroupId] = useState('');
   const [groups, setGroups] = useState([]);
-  const [permissionChecking, setPermissionChecking] = useState(false);
+
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
@@ -40,13 +44,19 @@ export default function Dashboard() {
     loadUpdateSettings();
 
     // Listen for auto-update notification from main process
-    const unsubscribe = window.ipc.on('updater:update-available', (data) => {
+    const unsubUpdate = window.ipc.on('updater:update-available', (data) => {
       setUpdateInfo(data);
       setShowUpdateBanner(true);
     });
 
+    // Listen for group scan progress
+    const unsubScan = window.ipc.on('groups:scan-progress', (data) => {
+      setScanProgress(data);
+    });
+
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (unsubUpdate) unsubUpdate();
+      if (unsubScan) unsubScan();
     };
   }, []);
 
@@ -118,54 +128,92 @@ export default function Dashboard() {
     }
   };
 
+  const sortGroups = (data) => {
+    return [...data].sort((a, b) => {
+      if (a.isOwner && !b.isOwner) return -1;
+      if (!a.isOwner && b.isOwner) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  };
+
   const fetchGroups = async (userId) => {
     try {
-      // IPC Call
-      const data = await window.ipc.invoke('groups:get-all', { userId });
-      // Sort: Owner first, then by name
-      data.sort((a, b) => {
-        if (a.isOwner && !b.isOwner) return -1;
-        if (!a.isOwner && b.isOwner) return 1;
-        return a.name.localeCompare(b.name);
-      });
-      setGroups(data);
+      const result = await window.ipc.invoke('groups:get-all', { userId });
+      if (result.needsScan) {
+        // First time - show confirmation dialog
+        setShowScanConfirm(true);
+      } else {
+        setGroups(sortGroups(result.groups));
+      }
     } catch (err) {
       console.error('Failed to fetch groups', err);
       setError('Failed to fetch groups: ' + err.message);
     }
   };
 
-  const handleGroupChange = async (e) => {
+  const startGroupScan = async () => {
+    setShowScanConfirm(false);
+    setGroupRefreshing(true);
+    setScanProgress({ current: 0, total: 0, groupName: '', phase: 'fetching' });
+    try {
+      const result = await window.ipc.invoke('groups:refresh', { userId: user?.id });
+      if (result.refreshed) {
+        setGroups(sortGroups(result.groups));
+        setRefreshCooldown(300);
+      }
+    } catch (err) {
+      console.error('Failed to scan groups', err);
+      setError('グループのスキャンに失敗しました: ' + err.message);
+    } finally {
+      setGroupRefreshing(false);
+      setScanProgress(null);
+    }
+  };
+
+  const handleRefreshGroups = async () => {
+    if (groupRefreshing || refreshCooldown > 0) return;
+    setGroupRefreshing(true);
+    setScanProgress({ current: 0, total: 0, groupName: '', phase: 'fetching' });
+    try {
+      const result = await window.ipc.invoke('groups:refresh', { userId: user?.id });
+      if (result.refreshed) {
+        setGroups(sortGroups(result.groups));
+        setRefreshCooldown(300);
+      } else if (result.cooldownRemaining > 0) {
+        setRefreshCooldown(result.cooldownRemaining);
+        setGroups(sortGroups(result.groups));
+      }
+    } catch (err) {
+      console.error('Failed to refresh groups', err);
+      setError('グループの更新に失敗しました: ' + err.message);
+    } finally {
+      setGroupRefreshing(false);
+      setScanProgress(null);
+    }
+  };
+
+  // Cooldown timer
+  useEffect(() => {
+    if (refreshCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setRefreshCooldown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [refreshCooldown]);
+
+  const handleGroupChange = (e) => {
     const newGroupId = e.target.value;
     if (!newGroupId) {
       setGroupId('');
       return;
     }
-
-    const fullGroup = groups.find(g => g.groupId === newGroupId);
-    if (!fullGroup) return;
-
-    // Check Owner
-    if (fullGroup.isOwner) {
-      setGroupId(newGroupId);
-      return;
-    }
-
-    // Not Owner -> Check Permissions via IPC
-    setPermissionChecking(true);
-    try {
-      const canPost = await window.ipc.invoke('groups:check-permission', { groupId: newGroupId });
-      if (canPost) {
-        setGroupId(newGroupId);
-      } else {
-        setError('You do not have permission to post to this group (group-announcement-manage required).');
-      }
-    } catch (err) {
-      console.error(err);
-      setError('Failed to check permissions');
-    } finally {
-      setPermissionChecking(false);
-    }
+    setGroupId(newGroupId);
   };
 
   const fetchPosts = async () => {
@@ -363,6 +411,62 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {/* Initial Scan Confirmation Dialog */}
+      {showScanConfirm && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
+            <h3 className={styles.modalTitle}>グループ権限のスキャン</h3>
+            <p className={styles.modalText}>
+              投稿権限のあるグループを確認するため、参加中のグループをスキャンします。
+              <br /><br />
+              <span style={{ color: '#a0aec0', fontSize: '0.85rem' }}>
+                ※ 初回のみ全グループの権限を確認します。スキャン結果はキャッシュされるため、2回目以降はすぐに表示されます。
+              </span>
+            </p>
+            <div className={styles.modalActions}>
+              <button className={styles.scanStartBtn} onClick={startGroupScan}>
+                スキャンを開始
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scan Progress Modal */}
+      {scanProgress && groupRefreshing && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
+            <h3 className={styles.modalTitle}>グループをスキャン中...</h3>
+            <div className={styles.scanProgressContainer}>
+              <div className={styles.scanProgressBar}>
+                <div
+                  className={styles.scanProgressFill}
+                  style={{
+                    width: scanProgress.total > 0
+                      ? `${(scanProgress.current / scanProgress.total) * 100}%`
+                      : '0%'
+                  }}
+                />
+              </div>
+              <div className={styles.scanProgressInfo}>
+                {scanProgress.phase === 'fetching' ? (
+                  <span>グループ一覧を取得中...</span>
+                ) : (
+                  <>
+                    <span className={styles.scanProgressCount}>
+                      {scanProgress.current} / {scanProgress.total}
+                    </span>
+                    <span className={styles.scanProgressName}>
+                      {scanProgress.groupName}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className={styles.errorBanner}>
           <span>{error}</span>
@@ -403,16 +507,32 @@ export default function Dashboard() {
                 className={styles.select}
                 value={groupId}
                 onChange={handleGroupChange}
-                disabled={permissionChecking}
                 required
               >
-                <option value="" disabled>Select a group {permissionChecking ? '(Checking permissions...)' : ''}</option>
+                <option value="" disabled>Select a group</option>
                 {groups.map(g => (
                   <option key={g.id} value={g.groupId}>
-                    {g.name} ({g.shortCode}) {g.isOwner ? '★' : ''}
+                    {g.name} ({g.shortCode}) {g.isOwner ? '★' : '◆'}
                   </option>
                 ))}
               </select>
+              <div style={{ marginTop: '0.3rem', fontSize: '0.75rem', textAlign: 'right' }}>
+                <span
+                  onClick={handleRefreshGroups}
+                  style={{
+                    color: (groupRefreshing || refreshCooldown > 0) ? '#4a5568' : '#63b3ed',
+                    cursor: (groupRefreshing || refreshCooldown > 0) ? 'default' : 'pointer',
+                    textDecoration: (groupRefreshing || refreshCooldown > 0) ? 'none' : 'underline',
+                  }}
+                >
+                  {groupRefreshing
+                    ? '更新中...'
+                    : refreshCooldown > 0
+                      ? `グループ更新 (${Math.floor(refreshCooldown / 60)}:${String(refreshCooldown % 60).padStart(2, '0')})`
+                      : 'グループが見つからない場合はこちら'
+                  }
+                </span>
+              </div>
             </div>
 
             <div className={styles.formGroup}>

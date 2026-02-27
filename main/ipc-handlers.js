@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { login, logout, verify2FA, getCurrentUser, getUserGroups, checkGroupPermission } from './vrchat.js';
+import { login, logout, verify2FA, getCurrentUser, getUserGroups, refreshUserGroups } from './vrchat.js';
 import { addPost, deletePost, getPosts } from './scheduler.js';
 import { checkForUpdates, getUpdateSettings, saveUpdateSettings, openDownloadPage } from './updater.js';
 
@@ -21,13 +21,8 @@ export function registerIpcHandlers() {
         return await logout();
     });
 
-
-    // Groups
+    // Groups (filtered by permission in getUserGroups, with persistent cache)
     ipcMain.handle('groups:get-all', async (_, { userId }) => {
-        // If userId not provided, maybe fetch current user first?
-        // Frontend should provide userId usually, or we store it in memory.
-        // For now, let's assume we can get it from getCurrentUser() if needed or passed from front.
-        // Optimization: Frontend sends userId.
         if (!userId) {
             const user = await getCurrentUser();
             if (!user) throw new Error('Not logged in');
@@ -36,8 +31,20 @@ export function registerIpcHandlers() {
         return await getUserGroups(userId);
     });
 
-    ipcMain.handle('groups:check-permission', async (_, { groupId }) => {
-        return await checkGroupPermission(groupId);
+    ipcMain.handle('groups:refresh', async (event, { userId }) => {
+        if (!userId) {
+            const user = await getCurrentUser();
+            if (!user) throw new Error('Not logged in');
+            userId = user.id;
+        }
+        const onProgress = (progress) => {
+            try {
+                event.sender.send('groups:scan-progress', progress);
+            } catch (e) {
+                // Window may have been closed
+            }
+        };
+        return await refreshUserGroups(userId, onProgress);
     });
 
     // Posts
