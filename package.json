@@ -2,7 +2,7 @@
   "private": true,
   "name": "vrchat-group-notify-scheduler",
   "description": "VRChat Group Notify Scheduler",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "author": "TakaAizu",
   "main": "app/background.js",
   "scripts": {
