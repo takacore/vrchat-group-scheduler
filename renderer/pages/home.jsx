@@ -41,6 +41,8 @@ export default function Dashboard() {
   const [updateSettings, setUpdateSettings] = useState({ channel: 'stable', autoCheck: true });
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState(null);
+  const [downloadProgress, setDownloadProgress] = useState(null); // { percent }
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -57,9 +59,25 @@ export default function Dashboard() {
       setScanProgress(data);
     });
 
+    // Listen for electron-updater events (Windows auto-update)
+    const unsubAutoUpdate = window.ipc.on('updater:auto-update-available', (data) => {
+      setUpdateInfo({ ...data, currentVersion: null, autoUpdater: true });
+      setShowUpdateBanner(true);
+    });
+    const unsubProgress = window.ipc.on('updater:download-progress', (data) => {
+      setDownloadProgress(data);
+    });
+    const unsubDownloaded = window.ipc.on('updater:update-downloaded', (data) => {
+      setDownloadProgress(null);
+      setUpdateDownloaded(true);
+    });
+
     return () => {
       if (unsubUpdate) unsubUpdate();
       if (unsubScan) unsubScan();
+      if (unsubAutoUpdate) unsubAutoUpdate();
+      if (unsubProgress) unsubProgress();
+      if (unsubDownloaded) unsubDownloaded();
     };
   }, []);
 
@@ -107,9 +125,23 @@ export default function Dashboard() {
   };
 
   const handleOpenDownload = async () => {
-    if (updateInfo?.downloadUrl) {
+    if (updateInfo?.autoUpdater) {
+      // Windows: use electron-updater to download
+      try {
+        setDownloadProgress({ percent: 0 });
+        await window.ipc.invoke('updater:download-update');
+      } catch (err) {
+        setDownloadProgress(null);
+        setError('ダウンロードに失敗しました: ' + err.message);
+      }
+    } else if (updateInfo?.downloadUrl) {
+      // macOS/manual: open in browser
       await window.ipc.invoke('updater:open-download', { url: updateInfo.downloadUrl });
     }
+  };
+
+  const handleInstallUpdate = async () => {
+    await window.ipc.invoke('updater:install-update');
   };
 
   const checkAuth = async () => {
@@ -496,14 +528,32 @@ export default function Dashboard() {
               {updateInfo.isBeta && <span className={styles.betaBadge}>BETA</span>}
             </div>
             <div className={styles.updateBannerMeta}>
-              v{updateInfo.currentVersion} → v{updateInfo.latestVersion}
+              {updateInfo.currentVersion ? `v${updateInfo.currentVersion} → ` : ''}v{updateInfo.latestVersion || updateInfo.version}
               {updateInfo.releaseNotes && ` — ${updateInfo.releaseNotes.split('\n')[0].substring(0, 80)}`}
             </div>
+            {downloadProgress && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <div style={{ background: '#1a202c', borderRadius: '3px', height: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${downloadProgress.percent}%`, height: '100%', background: '#48bb78', transition: 'width 0.3s ease', borderRadius: '3px' }} />
+                </div>
+                <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>ダウンロード中... {downloadProgress.percent}%</span>
+              </div>
+            )}
           </div>
           <div className={styles.updateBannerActions}>
-            <button className={styles.updateDownloadBtn} onClick={handleOpenDownload}>
-              ダウンロード
-            </button>
+            {updateDownloaded ? (
+              <button className={styles.updateDownloadBtn} onClick={handleInstallUpdate} style={{ backgroundColor: '#48bb78', color: '#1a202c' }}>
+                再起動してアップデート
+              </button>
+            ) : downloadProgress ? (
+              <button className={styles.updateDownloadBtn} disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+                ダウンロード中...
+              </button>
+            ) : (
+              <button className={styles.updateDownloadBtn} onClick={handleOpenDownload}>
+                {updateInfo.autoUpdater ? 'アップデート' : 'ダウンロード'}
+              </button>
+            )}
             <button className={styles.updateDismissBtn} onClick={() => setShowUpdateBanner(false)}>
               後で
             </button>

@@ -5,7 +5,7 @@ import log from 'electron-log/main'
 import { createWindow } from './helpers'
 import { initScheduler } from './scheduler'
 import { registerIpcHandlers } from './ipc-handlers'
-import { checkForUpdates, getUpdateSettings } from './updater.js'
+import { initAutoUpdater, autoCheckForUpdates, getUpdateSettings, checkForUpdates } from './updater.js'
 
 const isProd = process.env.NODE_ENV === 'production'
 
@@ -43,14 +43,23 @@ initScheduler().catch(console.error)
       mainWindow.webContents.openDevTools()
     }
 
+    // Initialize electron-updater (Windows auto-update)
+    initAutoUpdater(mainWindow)
+
     // Auto-update check on startup (delayed to avoid blocking)
     setTimeout(async () => {
       try {
         const settings = await getUpdateSettings()
         if (settings.autoCheck) {
-          const result = await checkForUpdates(settings.channel)
-          if (result.updateAvailable) {
-            mainWindow.webContents.send('updater:update-available', result)
+          if (process.platform === 'win32') {
+            // Windows: use electron-updater for seamless auto-update
+            await autoCheckForUpdates(settings.channel)
+          } else {
+            // macOS/Linux: use GitHub API check (no code signing = no auto-update)
+            const result = await checkForUpdates(settings.channel)
+            if (result.updateAvailable) {
+              mainWindow.webContents.send('updater:update-available', result)
+            }
           }
         }
       } catch (err) {

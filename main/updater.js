@@ -1,4 +1,5 @@
 import { app, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import { readJson, writeJson } from './storage.js';
 
 const GITHUB_OWNER = 'takacore';
@@ -25,7 +26,6 @@ function getCurrentVersion() {
 
 /**
  * Parse semver string into comparable parts
- * Supports: 1.0.0, 1.0.0-beta.1, v1.0.0
  */
 function parseSemver(version) {
     const cleaned = version.replace(/^v/, '');
@@ -36,7 +36,6 @@ function parseSemver(version) {
 
 /**
  * Compare two semver versions
- * Returns: 1 if a > b, -1 if a < b, 0 if equal
  */
 function compareSemver(a, b) {
     const va = parseSemver(a);
@@ -46,11 +45,9 @@ function compareSemver(a, b) {
     if (va.minor !== vb.minor) return va.minor > vb.minor ? 1 : -1;
     if (va.patch !== vb.patch) return va.patch > vb.patch ? 1 : -1;
 
-    // No prerelease > has prerelease (1.0.0 > 1.0.0-beta.1)
     if (!va.prerelease && vb.prerelease) return 1;
     if (va.prerelease && !vb.prerelease) return -1;
 
-    // Both have prerelease: compare lexicographically
     if (va.prerelease && vb.prerelease) {
         return va.prerelease.localeCompare(vb.prerelease);
     }
@@ -63,7 +60,7 @@ function compareSemver(a, b) {
  */
 export async function getUpdateSettings() {
     const defaults = {
-        channel: 'stable',  // 'stable' or 'beta'
+        channel: 'stable',
         autoCheck: true
     };
     const settings = await readJson(SETTINGS_FILE, defaults);
@@ -81,9 +78,7 @@ export async function saveUpdateSettings(settings) {
 }
 
 /**
- * Check for updates from GitHub Releases
- * @param {string} channel - 'stable' or 'beta'
- * @returns {Object} Update info
+ * Check for updates from GitHub Releases (for channel-aware checking)
  */
 export async function checkForUpdates(channel) {
     const fetchFn = await getFetch();
@@ -114,13 +109,10 @@ export async function checkForUpdates(channel) {
             };
         }
 
-        // Filter releases based on channel
         let targetRelease;
         if (channel === 'beta') {
-            // Beta channel: include pre-releases, pick the latest one
-            targetRelease = releases[0]; // API returns sorted by date desc
+            targetRelease = releases[0];
         } else {
-            // Stable channel: exclude pre-releases
             targetRelease = releases.find(r => !r.prerelease);
         }
 
@@ -153,8 +145,80 @@ export async function checkForUpdates(channel) {
     }
 }
 
+// --- electron-updater Auto Update ---
+
 /**
- * Open the download URL in the system browser
+ * Configure and initialize electron-updater autoUpdater
+ */
+export function initAutoUpdater(mainWindow) {
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('update-available', (info) => {
+        console.log('[AutoUpdater] Update available:', info.version);
+        mainWindow.webContents.send('updater:auto-update-available', {
+            version: info.version,
+            releaseNotes: info.releaseNotes || '',
+        });
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+        mainWindow.webContents.send('updater:download-progress', {
+            percent: Math.round(progress.percent),
+            bytesPerSecond: progress.bytesPerSecond,
+            transferred: progress.transferred,
+            total: progress.total,
+        });
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+        console.log('[AutoUpdater] Update downloaded:', info.version);
+        mainWindow.webContents.send('updater:update-downloaded', {
+            version: info.version,
+        });
+    });
+
+    autoUpdater.on('error', (err) => {
+        console.error('[AutoUpdater] Error:', err);
+        mainWindow.webContents.send('updater:error', {
+            message: err.message || 'アップデートエラーが発生しました',
+        });
+    });
+}
+
+/**
+ * Check for updates using electron-updater
+ */
+export async function autoCheckForUpdates(channel) {
+    autoUpdater.allowPrerelease = channel === 'beta';
+    try {
+        await autoUpdater.checkForUpdates();
+    } catch (err) {
+        console.error('[AutoUpdater] Check error:', err);
+    }
+}
+
+/**
+ * Download the update
+ */
+export async function downloadUpdate() {
+    try {
+        await autoUpdater.downloadUpdate();
+    } catch (err) {
+        console.error('[AutoUpdater] Download error:', err);
+        throw err;
+    }
+}
+
+/**
+ * Install the update and restart the app
+ */
+export function installUpdate() {
+    autoUpdater.quitAndInstall(false, true);
+}
+
+/**
+ * Open the download URL in the system browser (fallback for macOS)
  */
 export function openDownloadPage(url) {
     if (url) {
