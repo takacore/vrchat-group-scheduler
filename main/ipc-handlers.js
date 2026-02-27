@@ -1,7 +1,7 @@
 import { app, ipcMain } from 'electron';
 import { login, logout, verify2FA, getCurrentUser, getUserGroups, refreshUserGroups } from './vrchat.js';
 import { addPost, deletePost, getPosts } from './scheduler.js';
-import { checkForUpdates, getUpdateSettings, saveUpdateSettings, openDownloadPage } from './updater.js';
+import { checkForUpdates, getUpdateSettings, saveUpdateSettings, openDownloadPage, downloadUpdate, installUpdate } from './updater.js';
 
 export function registerIpcHandlers() {
     // App
@@ -83,5 +83,13 @@ export function registerIpcHandlers() {
     ipcMain.handle('updater:open-download', async (_, { url }) => {
         openDownloadPage(url);
         return true;
+    });
+
+    ipcMain.handle('updater:download-update', async () => {
+        return await downloadUpdate();
+    });
+
+    ipcMain.handle('updater:install-update', () => {
+        installUpdate();
     });
 }

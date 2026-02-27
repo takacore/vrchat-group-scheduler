@@ -1,4 +1,4 @@
-appId: com.example.vrchat-scheduler
+appId: com.takaaizu.vrchat-scheduler
 productName: VRChat Group Scheduler
 copyright: Copyright TakaAizu © 2026
 directories:
@@ -21,5 +21,11 @@ mac:
   gatekeeperAssess: false
 
 win:
-  target: portable
+  target: nsis
   icon: resources/icon.ico
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  deleteAppDataOnUninstall: false
