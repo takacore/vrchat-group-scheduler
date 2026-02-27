@@ -1,9 +1,14 @@
-import { ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
 import { login, logout, verify2FA, getCurrentUser, getUserGroups, refreshUserGroups } from './vrchat.js';
 import { addPost, deletePost, getPosts } from './scheduler.js';
 import { checkForUpdates, getUpdateSettings, saveUpdateSettings, openDownloadPage } from './updater.js';
 
 export function registerIpcHandlers() {
+    // App
+    ipcMain.handle('app:get-version', () => {
+        return app.getVersion();
+    });
+
     // Auth
     ipcMain.handle('auth:login', async (_, { username, password }) => {
         return await login(username, password);

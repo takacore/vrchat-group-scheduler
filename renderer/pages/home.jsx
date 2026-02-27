@@ -4,6 +4,7 @@ import styles from '../styles/Home.module.css';
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
+  const [appVersion, setAppVersion] = useState('');
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -120,6 +121,8 @@ export default function Dashboard() {
         return;
       }
       setUser(userData);
+      const version = await window.ipc.invoke('app:get-version');
+      setAppVersion(version);
       fetchGroups(userData.id); // Optimized: pass user id
       fetchPosts();
     } catch (err) {
@@ -402,7 +405,7 @@ export default function Dashboard() {
       <header className={styles.header}>
         <div className={styles.title}>VRChat Scheduler (Local)</div>
         <div className={styles.userInfo}>
-          <span className={styles.versionInfo}>v{updateInfo?.currentVersion || '1.0.0'}</span>
+          <span className={styles.versionInfo}>v{appVersion || '...'}</span>
           <button
             className={styles.settingsBtn}
             onClick={() => setShowSettings(true)}
