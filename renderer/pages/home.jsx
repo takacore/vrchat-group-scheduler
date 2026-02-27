@@ -272,8 +272,10 @@ export default function Dashboard() {
     }
 
     try {
+      const selectedGroup = groups.find(g => g.groupId === groupId);
       const res = await window.ipc.invoke('posts:create', {
         groupId,
+        groupName: selectedGroup?.name || groupId,
         title,
         text,
         scheduledAt: new Date(scheduledAt).toISOString(),
@@ -670,7 +672,7 @@ export default function Dashboard() {
                     {post.title}
                   </div>
                   <div className={styles.postMeta}>
-                    {new Date(post.scheduledAt).toLocaleString()} • {post.groupId}
+                    {new Date(post.scheduledAt).toLocaleString()} • {post.groupName || post.groupId}
                     {post.recurrence && (
                       <div style={{ color: '#90cdf4', fontSize: '0.85rem', marginTop: '2px' }}>
                         ↻ {post.recurrence.type.charAt(0).toUpperCase() + post.recurrence.type.slice(1)}
