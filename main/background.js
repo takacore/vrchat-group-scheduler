@@ -1,12 +1,18 @@
 import path from 'path'
 import { app, ipcMain } from 'electron'
 import serve from 'electron-serve'
+import log from 'electron-log/main'
 import { createWindow } from './helpers'
 import { initScheduler } from './scheduler'
 import { registerIpcHandlers } from './ipc-handlers'
 import { checkForUpdates, getUpdateSettings } from './updater.js'
 
 const isProd = process.env.NODE_ENV === 'production'
+
+// Initialize electron-log
+log.initialize()
+Object.assign(console, log.functions)
+log.info('Starting VRChat Group Scheduler...')
 
 if (isProd) {
   serve({ directory: 'app' })

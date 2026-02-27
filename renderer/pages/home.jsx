@@ -447,7 +447,7 @@ export default function Dashboard() {
             <div className={styles.scanProgressContainer}>
               <div className={styles.scanProgressBar}>
                 <div
-                  className={styles.scanProgressFill}
+                  className={`${styles.scanProgressFill} ${scanProgress.phase === 'waiting' ? styles.scanProgressFillWaiting : ''}`}
                   style={{
                     width: scanProgress.total > 0
                       ? `${(scanProgress.current / scanProgress.total) * 100}%`
@@ -458,6 +458,10 @@ export default function Dashboard() {
               <div className={styles.scanProgressInfo}>
                 {scanProgress.phase === 'fetching' ? (
                   <span>グループ一覧を取得中...</span>
+                ) : scanProgress.phase === 'waiting' ? (
+                  <span style={{ color: '#d69e2e', fontWeight: 'bold' }}>
+                    API制限のため一時待機中... ({Math.round(scanProgress.retryIn)}秒)
+                  </span>
                 ) : (
                   <>
                     <span className={styles.scanProgressCount}>

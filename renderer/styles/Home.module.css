@@ -604,7 +604,11 @@
     height: 100%;
     background: linear-gradient(90deg, #3182ce, #63b3ed);
     border-radius: 3px;
-    transition: width 0.3s ease;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+
+.scanProgressFillWaiting {
+    background: linear-gradient(90deg, #d69e2e, #ecc94b);
 }
 
 .scanProgressInfo {

@@ -11,9 +11,9 @@ const AUTH_FILE = 'auth.json';
 
 // --- Rate Limiter & Backoff ---
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 200; // 200ms minimum between requests
+const MIN_REQUEST_INTERVAL = 500; // 500ms minimum between requests
 
-async function apiRequest(url, options = {}) {
+async function apiRequest(url, options = {}, onProgress = null, groupName = '') {
     const now = Date.now();
     const elapsed = now - lastRequestTime;
     if (elapsed < MIN_REQUEST_INTERVAL) {
@@ -30,6 +30,9 @@ async function apiRequest(url, options = {}) {
         if (res.status === 429) {
             if (attempt < maxRetries) {
                 console.warn(`[VRChat API] Rate limited (429). Retrying in ${backoff / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+                if (onProgress && groupName) {
+                    onProgress({ phase: 'waiting', groupName, retryIn: backoff / 1000 });
+                }
                 await new Promise(resolve => setTimeout(resolve, backoff));
                 backoff = Math.min(backoff * 2, 30000);
                 continue;
@@ -178,13 +181,13 @@ export async function createGroupPost(groupId, postData) {
 }
 
 // --- Group Roles & Permissions ---
-async function getGroupRoles(groupId) {
+async function getGroupRoles(groupId, onProgress = null, groupName = '') {
     const cacheKey = `roles:${groupId}`;
     const cached = getMemCached(cacheKey);
     if (cached) return cached;
 
     const headers = await getAuthHeaders();
-    const res = await apiRequest(`${API_BASE}/groups/${groupId}/roles`, { headers });
+    const res = await apiRequest(`${API_BASE}/groups/${groupId}/roles`, { headers }, onProgress, groupName);
     if (!res.ok) return [];
     const roles = await res.json();
 
@@ -192,13 +195,13 @@ async function getGroupRoles(groupId) {
     return roles;
 }
 
-async function getGroupDetail(groupId) {
+async function getGroupDetail(groupId, onProgress = null, groupName = '') {
     const cacheKey = `group:${groupId}`;
     const cached = getMemCached(cacheKey);
     if (cached) return cached;
 
     const headers = await getAuthHeaders();
-    const res = await apiRequest(`${API_BASE}/groups/${groupId}`, { headers });
+    const res = await apiRequest(`${API_BASE}/groups/${groupId}`, { headers }, onProgress, groupName);
     if (!res.ok) return null;
     const group = await res.json();
 
@@ -206,14 +209,14 @@ async function getGroupDetail(groupId) {
     return group;
 }
 
-async function checkAnnouncementPermission(groupId) {
-    const group = await getGroupDetail(groupId);
+async function checkAnnouncementPermission(groupId, onProgress = null, groupName = '') {
+    const group = await getGroupDetail(groupId, onProgress, groupName);
     if (!group) return false;
 
     const myRoleIds = group.myMember?.roleIds || [];
     if (myRoleIds.length === 0) return false;
 
-    const roles = await getGroupRoles(groupId);
+    const roles = await getGroupRoles(groupId, onProgress, groupName);
 
     return roles.some(role =>
         myRoleIds.includes(role.id) &&
@@ -259,12 +262,16 @@ async function checkAndCachePermissions(allGroups, userId, existingCache) {
             if (cached && cached.checkedAt) {
                 // Use cached result - don't re-check
                 updatedGroups[gid] = { ...cached, groupData: group, name: group.name, shortCode: group.shortCode };
+                // Added progress update for cached items
+                if (onProgress) {
+                    onProgress({ phase: 'checking', current: i + 1, total: totalGroups, groupName: group.name });
+                }
                 continue;
             }
 
             // New group - need to check permission
             try {
-                const hasPermission = await checkAnnouncementPermission(gid);
+                const hasPermission = await checkAnnouncementPermission(gid, onProgress, group.name); // Added onProgress, group.name
                 updatedGroups[gid] = {
                     name: group.name,
                     shortCode: group.shortCode,
