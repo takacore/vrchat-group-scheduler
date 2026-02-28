@@ -22,7 +22,6 @@ async function apiRequest(endpoint, options = {}) {
             ...options,
             headers: {
                 'Content-Type': 'application/json',
-                'User-Agent': 'VRChatGroupScheduler/2.0.0 ai.takacore@gmail.com',
                 ...options.headers,
             },
             credentials: 'include',
