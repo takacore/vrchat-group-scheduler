@@ -6,17 +6,14 @@
             "type": "modifyHeaders",
             "requestHeaders": [
                 {
-                    "header": "User-Agent",
+                    "header": "user-agent",
                     "operation": "set",
                     "value": "VRChatGroupScheduler/2.0.0 ai.takacore@gmail.com"
                 }
             ]
         },
         "condition": {
-            "urlFilter": "*://api.vrchat.cloud/*",
-            "resourceTypes": [
-                "xmlhttprequest"
-            ]
+            "urlFilter": "*://api.vrchat.cloud/*"
         }
     },
     {
@@ -26,17 +23,14 @@
             "type": "modifyHeaders",
             "requestHeaders": [
                 {
-                    "header": "User-Agent",
+                    "header": "user-agent",
                     "operation": "set",
                     "value": "VRChatGroupScheduler/2.0.0 ai.takacore@gmail.com"
                 }
             ]
         },
         "condition": {
-            "urlFilter": "*://vrchat.com/api/*",
-            "resourceTypes": [
-                "xmlhttprequest"
-            ]
+            "urlFilter": "*://vrchat.com/api/*"
         }
     }
 ]
