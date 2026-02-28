@@ -8,22 +8,12 @@
         "alarms",
         "cookies",
         "notifications",
-        "scripting",
-        "declarativeNetRequest"
+        "scripting"
     ],
     "host_permissions": [
-        "https://api.vrchat.cloud/*",
-        "https://vrchat.com/*"
+        "https://*/*",
+        "http://*/*"
     ],
-    "declarative_net_request": {
-        "rule_resources": [
-            {
-                "id": "ruleset_1",
-                "enabled": true,
-                "path": "rules.json"
-            }
-        ]
-    },
     "background": {
         "service_worker": "background/background.js",
         "type": "module"
