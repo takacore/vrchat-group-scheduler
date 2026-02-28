@@ -4,6 +4,9 @@
     background-color: #1a202c;
     color: #fff;
     font-family: 'Inter', sans-serif;
+    min-width: 700px;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .header {
@@ -85,6 +88,7 @@
     background-color: #1a202c;
     color: #fff;
     font-size: 1rem;
+    box-sizing: border-box;
 }
 
 .textarea {
