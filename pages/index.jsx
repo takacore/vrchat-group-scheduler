@@ -63,13 +63,28 @@ export default function Dashboard() {
     const handleProgress = (request) => {
       if (request.type === 'SCAN_PROGRESS') {
         setScanProgress(request.payload);
+      } else if (request.type === 'SCAN_COMPLETE') {
+        setGroupRefreshing(false);
+        setScanProgress(null);
+        if (request.payload?.refreshed) {
+          setRefreshCooldown(300);
+          // Refresh group list from background
+          if (user) {
+            invokeBackend('groups:get-all', { userId: user.id }).then(res => {
+              if (res.groups) setGroups(sortGroups(res.groups));
+            }).catch(console.error);
+          }
+        }
+        if (request.payload?.error) {
+          setError('グループスキャン中にエラーが発生しました: ' + request.payload.error);
+        }
       }
     };
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener(handleProgress);
       return () => chrome.runtime.onMessage.removeListener(handleProgress);
     }
-  }, []);
+  }, [user]);
 
   const loadUpdateSettings = async () => {
     try {
@@ -177,17 +192,19 @@ export default function Dashboard() {
     setScanProgress({ current: 0, total: 0, groupName: '', phase: 'fetching' });
     try {
       const result = await invokeBackend('groups:refresh', { userId: user?.id });
-      if (result.refreshed) {
+      if (result.scanning) {
+        setGroups(sortGroups(result.groups));
+        return; // Keep refreshing state true until SCAN_COMPLETE arrives
+      } else if (result.refreshed) {
         setGroups(sortGroups(result.groups));
         setRefreshCooldown(300);
       }
     } catch (err) {
       console.error('Failed to scan groups', err);
       setError('グループのスキャンに失敗しました: ' + err.message);
-    } finally {
-      setGroupRefreshing(false);
-      setScanProgress(null);
     }
+    setGroupRefreshing(false);
+    setScanProgress(null);
   };
 
   const handleRefreshGroups = async () => {
@@ -196,7 +213,10 @@ export default function Dashboard() {
     setScanProgress({ current: 0, total: 0, groupName: '', phase: 'fetching' });
     try {
       const result = await invokeBackend('groups:refresh', { userId: user?.id });
-      if (result.refreshed) {
+      if (result.scanning) {
+        setGroups(sortGroups(result.groups));
+        return; // Wait for SCAN_COMPLETE to reset states
+      } else if (result.refreshed) {
         setGroups(sortGroups(result.groups));
         setRefreshCooldown(300);
       } else if (result.cooldownRemaining > 0) {
@@ -206,10 +226,9 @@ export default function Dashboard() {
     } catch (err) {
       console.error('Failed to refresh groups', err);
       setError('グループの更新に失敗しました: ' + err.message);
-    } finally {
-      setGroupRefreshing(false);
-      setScanProgress(null);
     }
+    setGroupRefreshing(false);
+    setScanProgress(null);
   };
 
   // Cooldown timer

@@ -1,9 +1,10 @@
 import { storage } from './storage.js';
 
 const VRC_API_URL = 'https://vrchat.com/api/1';
-const MIN_REQUEST_INTERVAL = 500; // 500ms minimum between requests
+const MIN_REQUEST_INTERVAL = 200; // 500ms minimum between requests
 
 let lastRequestTime = 0;
+let onRateLimitCallback = null;
 
 async function apiRequest(endpoint, options = {}) {
     const now = Date.now();
@@ -34,8 +35,9 @@ async function apiRequest(endpoint, options = {}) {
         if (res.status === 429) {
             if (attempt < maxRetries) {
                 console.warn(`[VRChat API] Rate limited (429). Retrying in ${backoff / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+                if (onRateLimitCallback) onRateLimitCallback(backoff);
                 await new Promise(resolve => setTimeout(resolve, backoff));
-                backoff = Math.min(backoff * 2, 30000);
+                backoff = Math.min(backoff * 2, 60000);
                 continue;
             }
             console.error('[VRChat API] Rate limited after max retries.');
@@ -147,9 +149,18 @@ async function checkAndCachePermissions(allGroups, userId, existingCache) {
 
     for (const group of allGroups) {
         current++;
+        const progressPayload = { current, total, groupName: group.name, phase: 'fetching' };
+
+        onRateLimitCallback = (backoffDuration) => {
+            chrome.runtime.sendMessage({
+                type: 'SCAN_PROGRESS',
+                payload: { ...progressPayload, phase: 'waiting', retryIn: backoffDuration / 1000 }
+            }).catch(() => { });
+        };
+
         chrome.runtime.sendMessage({
             type: 'SCAN_PROGRESS',
-            payload: { current, total, groupName: group.name, phase: 'fetching' }
+            payload: progressPayload
         }).catch(() => { });
 
         const gid = group.groupId;
@@ -200,6 +211,7 @@ async function checkAndCachePermissions(allGroups, userId, existingCache) {
         }
     }
 
+    onRateLimitCallback = null;
     return updatedGroups;
 }
 
@@ -214,9 +226,18 @@ async function forceCheckAllPermissions(allGroups, userId) {
     for (let i = 0; i < allGroups.length; i++) {
         const group = allGroups[i];
         current++;
+        const progressPayload = { current, total, groupName: group.name, phase: 'fetching' };
+
+        onRateLimitCallback = (backoffDuration) => {
+            chrome.runtime.sendMessage({
+                type: 'SCAN_PROGRESS',
+                payload: { ...progressPayload, phase: 'waiting', retryIn: backoffDuration / 1000 }
+            }).catch(() => { });
+        };
+
         chrome.runtime.sendMessage({
             type: 'SCAN_PROGRESS',
-            payload: { current, total, groupName: group.name, phase: 'fetching' }
+            payload: progressPayload
         }).catch(() => { });
 
         const gid = group.groupId;
@@ -260,6 +281,7 @@ async function forceCheckAllPermissions(allGroups, userId) {
         }
     }
 
+    onRateLimitCallback = null;
     return updatedGroups;
 }
 
@@ -333,22 +355,40 @@ export const api = {
 
         console.log(`[VRChat API] Manual refresh triggered. Fetching all groups...`);
         const allGroups = await fetchAllGroupsFromAPI(userId);
-        const updatedGroups = await forceCheckAllPermissions(allGroups, userId);
 
-        const newCache = {
-            lastFullCheck: new Date().toISOString(),
-            lastRefresh: new Date().toISOString(),
-            groups: updatedGroups,
-        };
-        await saveGroupCache(userId, newCache);
+        // Start async scan without blocking
+        (async () => {
+            try {
+                const updatedGroups = await forceCheckAllPermissions(allGroups, userId);
 
-        const result = buildFilteredGroupList(updatedGroups);
-        console.log(`[VRChat API] Refresh complete: ${result.length}/${allGroups.length} groups have posting permission.`);
+                const newCache = {
+                    lastFullCheck: new Date().toISOString(),
+                    lastRefresh: new Date().toISOString(),
+                    groups: updatedGroups,
+                };
+                await saveGroupCache(userId, newCache);
+
+                const result = buildFilteredGroupList(updatedGroups);
+                console.log(`[VRChat API] Refresh complete: ${result.length}/${allGroups.length} groups have posting permission.`);
+
+                chrome.runtime.sendMessage({
+                    type: 'SCAN_COMPLETE',
+                    payload: { refreshed: true }
+                }).catch(() => { });
+            } catch (err) {
+                console.error('[VRChat API] Async scan failed:', err);
+                chrome.runtime.sendMessage({
+                    type: 'SCAN_COMPLETE',
+                    payload: { refreshed: false, error: err.message }
+                }).catch(() => { });
+            }
+        })();
 
         return {
-            groups: result,
+            groups: buildFilteredGroupList(cache.groups),
             cooldownRemaining: 0,
-            refreshed: true,
+            refreshed: false,
+            scanning: true
         };
     },
 
