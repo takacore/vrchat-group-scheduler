@@ -22,7 +22,6 @@ async function apiRequest(endpoint, options = {}) {
             ...options,
             headers: {
                 'Content-Type': 'application/json',
-                'User-Agent': 'VRChatGroupScheduler/2.0.0 ai.takacore@gmail.com',
                 ...options.headers,
             },
             credentials: 'include',
@@ -143,8 +142,16 @@ async function fetchAllGroupsFromAPI(userId) {
 async function checkAndCachePermissions(allGroups, userId, existingCache) {
     const now = new Date().toISOString();
     const updatedGroups = { ...existingCache.groups };
+    const total = allGroups.length;
+    let current = 0;
 
     for (const group of allGroups) {
+        current++;
+        chrome.runtime.sendMessage({
+            type: 'SCAN_PROGRESS',
+            payload: { current, total, groupName: group.name, phase: 'fetching' }
+        }).catch(() => { });
+
         const gid = group.groupId;
         const isOwner = group.ownerId === userId;
 
@@ -202,9 +209,16 @@ async function forceCheckAllPermissions(allGroups, userId) {
     const total = allGroups.length;
 
     console.log(`[VRChat API] Force refreshing permissions for ${total} groups...`);
+    let current = 0;
 
     for (let i = 0; i < allGroups.length; i++) {
         const group = allGroups[i];
+        current++;
+        chrome.runtime.sendMessage({
+            type: 'SCAN_PROGRESS',
+            payload: { current, total, groupName: group.name, phase: 'fetching' }
+        }).catch(() => { });
+
         const gid = group.groupId;
         const isOwner = group.ownerId === userId;
 

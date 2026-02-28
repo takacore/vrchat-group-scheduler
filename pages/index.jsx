@@ -58,6 +58,19 @@ export default function Dashboard() {
     }
   }, [showTrash, user]);
 
+  // Listen for scan progress from background worker
+  useEffect(() => {
+    const handleProgress = (request) => {
+      if (request.type === 'SCAN_PROGRESS') {
+        setScanProgress(request.payload);
+      }
+    };
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener(handleProgress);
+      return () => chrome.runtime.onMessage.removeListener(handleProgress);
+    }
+  }, []);
+
   const loadUpdateSettings = async () => {
     try {
       const settings = await invokeBackend('updater:get-settings');
