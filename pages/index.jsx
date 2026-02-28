@@ -490,8 +490,7 @@ export default function Dashboard() {
                 border: '1px solid #4a5568'
               }}
             >
-              <span>↗️</span>
-              <span>全画面</span>
+              <span>↗️全画面</span>
             </button>
             <span className={styles.username}>{user.displayName}</span>
             <img src={user.userIcon || 'https://assets.vrchat.com/www/images/default_avatar.png'} className={styles.avatar} alt="Avatar" />
