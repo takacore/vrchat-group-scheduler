@@ -11,8 +11,8 @@
         "scripting"
     ],
     "host_permissions": [
-        "https://*/*",
-        "http://*/*"
+        "https://api.vrchat.cloud/*",
+        "https://vrchat.com/*"
     ],
     "background": {
         "service_worker": "background/background.js",
