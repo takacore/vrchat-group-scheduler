@@ -36,6 +36,15 @@ export default function Dashboard() {
   const [recurrenceType, setRecurrenceType] = useState('daily');
   const [recurrenceDays, setRecurrenceDays] = useState([]);
 
+  // Image State
+  const [imageDataUrl, setImageDataUrl] = useState('');
+  const [imageName, setImageName] = useState('');
+
+  // X(Twitter) State
+  const [postToX, setPostToX] = useState(false);
+  const [xText, setXText] = useState('');
+  const [xLoggedIn, setXLoggedIn] = useState(null); // null = unknown, true/false = checked
+
   // Update State
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -290,6 +299,39 @@ export default function Dashboard() {
     }
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setImageDataUrl('');
+      setImageName('');
+      return;
+    }
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      setError('画像サイズは5MB以下にしてください');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImageDataUrl(reader.result);
+      setImageName(file.name);
+    };
+    reader.onerror = () => setError('画像の読み込みに失敗しました');
+    reader.readAsDataURL(file);
+  };
+
+  const handleCheckXLogin = async () => {
+    try {
+      const ok = await invokeBackend('x:check-login');
+      setXLoggedIn(!!ok);
+      setToast({ message: ok ? 'X(Twitter)にログイン済みです' : 'X(Twitter)にログインしていません', type: ok ? 'success' : 'error' });
+    } catch (err) {
+      setXLoggedIn(false);
+      setError('X確認失敗: ' + err.message);
+    }
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!groupId || !title || !text || !scheduledAt) return;
@@ -320,7 +362,11 @@ export default function Dashboard() {
         scheduledAt: new Date(scheduledAt).toISOString(),
         sendNotification: notification,
         recurrence,
-        status: isRecurring ? 'recurring' : 'pending'
+        status: isRecurring ? 'recurring' : 'pending',
+        imageDataUrl: imageDataUrl || null,
+        imageName: imageName || null,
+        postToX,
+        xText: postToX ? (xText || `${title}\n\n${text}`) : null,
       });
 
       if (res) { // res is the new post object
@@ -329,6 +375,10 @@ export default function Dashboard() {
         setScheduledAt('');
         setIsRecurring(false);
         setRecurrenceDays([]);
+        setImageDataUrl('');
+        setImageName('');
+        setPostToX(false);
+        setXText('');
         fetchPosts();
         setToast({ message: '投稿をスケジュールしました！', type: 'success' });
       }
@@ -372,6 +422,10 @@ export default function Dashboard() {
     setText(post.text);
     setNotification(post.sendNotification || false);
     setScheduledAt('');
+    setImageDataUrl(post.imageDataUrl || '');
+    setImageName(post.imageName || '');
+    setPostToX(!!post.postToX);
+    setXText(post.xText || '');
 
     setError('');
   };
@@ -394,6 +448,10 @@ export default function Dashboard() {
     setText(post.text);
     setNotification(post.sendNotification || false);
     setScheduledAt(''); // Reset time for new schedule
+    setImageDataUrl(post.imageDataUrl || '');
+    setImageName(post.imageName || '');
+    setPostToX(!!post.postToX);
+    setXText(post.xText || '');
 
     // Handle Recurrence
     if (post.recurrence) {
@@ -664,6 +722,47 @@ export default function Dashboard() {
               </div>
 
               <div className={styles.formGroup}>
+                <label className={styles.label}>Image (Optional, PNG/JPG, ≤5MB)</label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif"
+                  onChange={handleImageChange}
+                  style={{ color: '#e2e8f0', fontSize: '0.9rem' }}
+                />
+                <div style={{ fontSize: '0.7rem', color: '#d69e2e', marginTop: '0.25rem' }}>
+                  ※ VRChat側の画像添付は VRC+ サブスクライブ必須で、最低 512×512px 程度必要です。条件外なら画像なしで投稿継続し、X同時投稿には影響しません。
+                </div>
+                {imageDataUrl && (
+                  <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <img
+                      src={imageDataUrl}
+                      alt="preview"
+                      style={{ maxWidth: '120px', maxHeight: '80px', borderRadius: '4px', border: '1px solid #4a5568' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: '#a0aec0', fontSize: '0.8rem', wordBreak: 'break-all' }}>{imageName}</div>
+                      <button
+                        type="button"
+                        onClick={() => { setImageDataUrl(''); setImageName(''); }}
+                        style={{
+                          marginTop: '0.3rem',
+                          background: '#4a5568',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '3px',
+                          padding: '0.2rem 0.6rem',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        画像を削除
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className={styles.formGroup}>
                 <label className={styles.label}>Start Time (First Execution)</label>
                 <input
                   type="datetime-local"
@@ -743,6 +842,58 @@ export default function Dashboard() {
                 <label htmlFor="noti" style={{ marginBottom: 0, color: '#fff' }}>Send Notification to Group</label>
               </div>
 
+              <div className={styles.formGroup}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    id="postX"
+                    checked={postToX}
+                    onChange={e => setPostToX(e.target.checked)}
+                  />
+                  <label htmlFor="postX" style={{ marginBottom: 0, color: '#fff', fontWeight: 'bold' }}>X(Twitter)にも同時投稿</label>
+                  <span
+                    onClick={handleCheckXLogin}
+                    style={{
+                      marginLeft: 'auto',
+                      color: xLoggedIn === true ? '#48bb78' : xLoggedIn === false ? '#f56565' : '#63b3ed',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      fontSize: '0.8rem',
+                    }}
+                    title="X(Twitter)へのログイン状態を確認"
+                  >
+                    {xLoggedIn === true ? '✓ ログイン済み' : xLoggedIn === false ? '✕ 未ログイン' : 'X ログイン確認'}
+                  </span>
+                </div>
+
+                {postToX && (
+                  <div style={{ marginLeft: '1.5rem', padding: '0.5rem', background: '#2d3748', borderRadius: '4px' }}>
+                    <label className={styles.label} style={{ fontSize: '0.9rem' }}>
+                      Xポスト本文（空欄ならTitle+Messageを使用、280字以内）
+                    </label>
+                    <textarea
+                      className={styles.textarea}
+                      style={{ fontSize: '0.9rem', minHeight: '60px' }}
+                      value={xText}
+                      onChange={e => setXText(e.target.value)}
+                      maxLength={280}
+                      placeholder={`${title}\n\n${text}`.slice(0, 280)}
+                    />
+                    <div style={{ fontSize: '0.75rem', color: '#a0aec0', textAlign: 'right' }}>
+                      {(xText || `${title}\n\n${text}`).length} / 280
+                    </div>
+                    {imageDataUrl && (
+                      <div style={{ fontSize: '0.75rem', color: '#90cdf4' }}>
+                        ↑ アップロードした画像も同時に投稿します
+                      </div>
+                    )}
+                    <div style={{ fontSize: '0.75rem', color: '#d69e2e', marginTop: '0.3rem' }}>
+                      ※ ブラウザでX(Twitter)にログイン済みであることが必要です
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button type="submit" className={styles.button}>Schedule Post</button>
             </form>
           </section>
@@ -775,6 +926,8 @@ export default function Dashboard() {
                   <div className={styles.postInfo}>
                     <div className={styles.postTitle}>
                       {post.status === 'recurring' && <span style={{ fontSize: '0.8rem', background: '#3182ce', padding: '2px 6px', borderRadius: '4px', marginRight: '6px' }}>Repeat</span>}
+                      {post.imageDataUrl && <span style={{ fontSize: '0.75rem', background: '#48bb78', padding: '2px 6px', borderRadius: '4px', marginRight: '6px' }}>IMG</span>}
+                      {post.postToX && <span style={{ fontSize: '0.75rem', background: '#1da1f2', padding: '2px 6px', borderRadius: '4px', marginRight: '6px' }}>X</span>}
                       {post.title}
                     </div>
                     <div className={styles.postMeta}>
@@ -783,6 +936,16 @@ export default function Dashboard() {
                         <div style={{ color: '#90cdf4', fontSize: '0.85rem', marginTop: '2px' }}>
                           ↻ {post.recurrence.type.charAt(0).toUpperCase() + post.recurrence.type.slice(1)}
                           {post.recurrence.type === 'weekly' && post.recurrence.days && ` (${post.recurrence.days.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')})`}
+                        </div>
+                      )}
+                      {post.vrcImageError && (
+                        <div style={{ color: '#fc8181', fontSize: '0.8rem', marginTop: '2px' }}>
+                          画像添付失敗: {post.vrcImageError}
+                        </div>
+                      )}
+                      {post.xError && (
+                        <div style={{ color: '#fc8181', fontSize: '0.8rem', marginTop: '2px' }}>
+                          X投稿失敗: {post.xError}
                         </div>
                       )}
                     </div>

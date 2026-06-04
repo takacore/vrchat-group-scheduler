@@ -5,13 +5,18 @@
     "description": "Schedule and automate group announcements on VRChat.",
     "permissions": [
         "storage",
+        "unlimitedStorage",
         "alarms",
         "cookies",
-        "notifications"
+        "notifications",
+        "declarativeNetRequestWithHostAccess"
     ],
     "host_permissions": [
         "https://api.vrchat.cloud/*",
-        "https://vrchat.com/*"
+        "https://vrchat.com/*",
+        "https://api.x.com/*",
+        "https://x.com/*",
+        "https://upload.x.com/*"
     ],
     "background": {
         "service_worker": "background/background.js",

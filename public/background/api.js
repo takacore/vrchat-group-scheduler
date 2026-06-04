@@ -18,11 +18,14 @@ async function apiRequest(endpoint, options = {}) {
     const maxRetries = 3;
     let backoff = 2000;
 
+    const isMultipart = options.body instanceof FormData;
+    const baseHeaders = isMultipart ? {} : { 'Content-Type': 'application/json' };
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         const res = await fetch(url, {
             ...options,
             headers: {
-                'Content-Type': 'application/json',
+                ...baseHeaders,
                 ...options.headers,
             },
             credentials: 'include',
@@ -396,11 +399,34 @@ export const api = {
         return getGroupDetail(groupId);
     },
 
-    async createGroupPost(groupId, title, text, sendNotification = false) {
+    async createGroupPost(groupId, title, text, sendNotification = false, imageId = null) {
+        const body = { title, text, sendNotification };
+        if (imageId) body.imageId = imageId;
         const res = await apiRequest(`/groups/${groupId}/posts`, {
             method: 'POST',
-            body: JSON.stringify({ title, text, sendNotification })
+            body: JSON.stringify(body)
         });
         return res.json();
+    },
+
+    async uploadImage(blob, filename = 'image.png', tag = 'gallery') {
+        const form = new FormData();
+        form.append('file', blob, filename);
+        form.append('tag', tag);
+        const res = await apiRequest('/file/image', {
+            method: 'POST',
+            body: form,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.id) {
+            const msg = data.error?.message || `Image upload failed (${res.status})`;
+            const isPermission = res.status === 403 || /permission/i.test(msg);
+            const err = new Error(isPermission
+                ? `VRChatに画像をアップロードできません。VRC+ サブスクライブが必要です（${msg.replace(/^"|"$/g, '')}）`
+                : msg);
+            err.isPermission = isPermission;
+            throw err;
+        }
+        return data.id;
     }
 };

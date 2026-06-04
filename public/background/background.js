@@ -2,6 +2,12 @@
 import { api } from './api.js';
 import { storage } from './storage.js';
 import { scheduler } from './scheduler.js';
+import { xApi } from './x-api.js';
+
+async function dataUrlToBlob(dataUrl) {
+    const res = await fetch(dataUrl);
+    return res.blob();
+}
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log('VRChat Group Scheduler Extension Installed');
@@ -31,18 +37,51 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     const post = posts[postIndex];
 
     try {
-        const result = await api.createGroupPost(post.groupId, post.title, post.text, post.sendNotification);
+        let imageId = null;
+        let vrcImageError = null;
+        if (post.imageDataUrl) {
+            try {
+                const blob = await dataUrlToBlob(post.imageDataUrl);
+                const filename = post.imageName || 'image.png';
+                imageId = await api.uploadImage(blob, filename, 'gallery');
+            } catch (uploadErr) {
+                vrcImageError = uploadErr.message;
+                console.warn('VRChat image upload failed, posting without image:', uploadErr);
+            }
+        }
+
+        const result = await api.createGroupPost(post.groupId, post.title, post.text, post.sendNotification, imageId);
         console.log('Post successful:', result);
 
-        // Update post status
-        posts[postIndex].status = 'completed';
+        let xResultOk = true;
+        let xError = null;
+        if (post.postToX) {
+            try {
+                const xText = post.xText || `${post.title}\n\n${post.text}`;
+                await xApi.post(xText, post.imageDataUrl || null);
+            } catch (xErr) {
+                xResultOk = false;
+                xError = xErr.message;
+                console.error('X(Twitter) post failed:', xErr);
+            }
+        }
+
+        const fullySuccess = xResultOk && !vrcImageError;
+        posts[postIndex].status = fullySuccess ? 'completed' : 'partial';
+        if (xError) posts[postIndex].xError = xError;
+        if (vrcImageError) posts[postIndex].vrcImageError = vrcImageError;
         await storage.set({ posts });
 
+        const issues = [];
+        if (vrcImageError) issues.push(`画像添付失敗`);
+        if (xError) issues.push(`X投稿失敗`);
         chrome.notifications.create({
             type: 'basic',
             iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-            title: 'VRChat Group Scheduled Post',
-            message: `Successfully posted to group: ${post.groupName || post.groupId}`
+            title: fullySuccess ? 'VRChat Group Scheduled Post' : `投稿完了（${issues.join(' / ')}）`,
+            message: fullySuccess
+                ? `Successfully posted to group: ${post.groupName || post.groupId}`
+                : `VRChat投稿はOK。${vrcImageError ? '画像: ' + vrcImageError + '. ' : ''}${xError ? 'X: ' + xError : ''}`
         });
 
     } catch (error) {
@@ -106,6 +145,12 @@ async function handleApiCall({ action, params }) {
             return api.refreshUserGroups(params.userId);
         case 'getGroup':
             return api.getGroup(params.groupId);
+        case 'xCheckLogin':
+            return xApi.checkLogin();
+        case 'xPostNow': {
+            const { text, imageDataUrl } = params || {};
+            return xApi.post(text, imageDataUrl || null);
+        }
         default:
             throw new Error(`Unknown action: ${action}`);
     }
