@@ -286,6 +286,27 @@
     background-color: rgba(229, 62, 62, 0.12);
 }
 
+/* [proto] 公開中お知らせの本番削除 — ⚠️高リスク破壊的。ローカルの「×」とは別の赤いラベル付きボタン */
+.deleteLiveBtn {
+    background: rgba(229, 62, 62, 0.10);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    cursor: pointer;
+    margin-left: 4px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.deleteLiveBtn:hover {
+    background-color: var(--danger);
+    color: #fff;
+}
+
 .retryBtn {
     background: none;
     border: none;

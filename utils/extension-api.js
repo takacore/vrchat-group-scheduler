@@ -22,6 +22,35 @@ export const invokeBackend = async (action, payload = {}) => {
                 type = 'API_CALL';
                 payload = { action: 'refreshGroups', params: payload };
                 break;
+            // [proto] 公開中お知らせ一覧 (GET /groups/{id}/posts) — 重複ガード/Published一覧で共有
+            case 'posts:get-published':
+                type = 'API_CALL';
+                payload = { action: 'getGroupPosts', params: payload };
+                break;
+            // [proto] グループ在席ダッシュボード用のGETチャンネル（非破壊）
+            case 'groups:get-detail':
+                type = 'API_CALL';
+                payload = { action: 'getGroup', params: payload };
+                break;
+            case 'groups:get-instances':
+                type = 'API_CALL';
+                payload = { action: 'getGroupInstances', params: payload };
+                break;
+            // [proto] 投稿権限のプリフライト確認
+            case 'groups:check-permission':
+                type = 'API_CALL';
+                payload = { action: 'checkPostPermission', params: payload };
+                break;
+            // [proto] 公開中お知らせの編集 (PUT /groups/{id}/posts/{notificationId}) — 破壊的
+            case 'posts:update-live':
+                type = 'API_CALL';
+                payload = { action: 'updateGroupPost', params: payload };
+                break;
+            // [proto] 公開中お知らせの削除 (DELETE /groups/{id}/posts/{notificationId}) — ⚠️破壊的
+            case 'posts:delete-live':
+                type = 'API_CALL';
+                payload = { action: 'deleteGroupPost', params: payload };
+                break;
             case 'posts:get-all':
                 return chrome.runtime.sendMessage({ type: 'STORAGE_GET', payload: { keys: ['posts'] } }, (response) => {
                     if (response?.success) {

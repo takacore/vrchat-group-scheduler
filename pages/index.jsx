@@ -16,6 +16,15 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState(''); // VRChat接続失敗（AUTH以外）
   const [showTrash, setShowTrash] = useState(false);
+  // [proto] 投稿済みお知らせ一覧パネル (GET /groups/{id}/posts, 非破壊)
+  const [publishedMode, setPublishedMode] = useState(false);
+  const [publishedPosts, setPublishedPosts] = useState([]);
+  const [publishedLoading, setPublishedLoading] = useState(false);
+  const [publishedError, setPublishedError] = useState('');
+  // [proto] 公開中お知らせの即時編集 (PUT /posts/{notificationId}, 破壊的)
+  const [liveEditingId, setLiveEditingId] = useState(null); // null | notificationId(=GroupPost.id)
+  const [liveEditingGroupId, setLiveEditingGroupId] = useState(null);
+  const [liveEditingTitle, setLiveEditingTitle] = useState('');
   const [groupRefreshing, setGroupRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [showScanConfirm, setShowScanConfirm] = useState(false);
@@ -26,6 +35,14 @@ export default function Dashboard() {
   // Form State
   const [groupId, setGroupId] = useState('');
   const [groups, setGroups] = useState([]);
+
+  // [proto] グループ在席ダッシュボード: 選択グループの人数/アクティブインスタンス数をキャッシュ
+  const [groupStats, setGroupStats] = useState({}); // { [groupId]: { memberCount, onlineMemberCount, instances } }
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  // [proto] 投稿権限のプリフライト確認 (null=未確認, true=権限あり, false=権限なし)
+  const [permOk, setPermOk] = useState(null);
+  const [permChecking, setPermChecking] = useState(false);
 
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
@@ -70,6 +87,33 @@ export default function Dashboard() {
       fetchPosts();
     }
   }, [showTrash, user]);
+
+  // [proto] Published一覧: 指定グループの公開中お知らせをGETで取得（非破壊）
+  const fetchPublishedPosts = async (gid = groupId) => {
+    if (!gid) {
+      setPublishedPosts([]);
+      setPublishedError('');
+      return;
+    }
+    setPublishedLoading(true);
+    setPublishedError('');
+    try {
+      const data = await invokeBackend('posts:get-published', { groupId: gid });
+      setPublishedPosts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setPublishedError(err.message || 'お知らせの取得に失敗しました');
+      setPublishedPosts([]);
+    } finally {
+      setPublishedLoading(false);
+    }
+  };
+
+  // [proto] published中はgroupId変更時に再取得
+  useEffect(() => {
+    if (publishedMode) {
+      fetchPublishedPosts(groupId);
+    }
+  }, [publishedMode, groupId]);
 
   // Listen for scan progress from background worker
   useEffect(() => {
@@ -275,13 +319,58 @@ export default function Dashboard() {
     return () => clearInterval(timer);
   }, [refreshCooldown]);
 
+  // [proto] グループ在席ダッシュボード: グループ選択時に未取得なら在席情報をGETでキャッシュ
+  useEffect(() => {
+    if (!groupId) return;
+    if (groupStats[groupId]) return; // 取得済みなら連打防止のためスキップ
+
+    let cancelled = false;
+    (async () => {
+      setStatsLoading(true);
+      try {
+        const [detail, instances] = await Promise.all([
+          invokeBackend('groups:get-detail', { groupId }),
+          invokeBackend('groups:get-instances', { groupId }),
+        ]);
+        if (cancelled) return;
+        setGroupStats(prev => ({
+          ...prev,
+          [groupId]: {
+            memberCount: detail?.memberCount,
+            onlineMemberCount: detail?.onlineMemberCount,
+            instances: Array.isArray(instances) ? instances : [],
+          },
+        }));
+      } catch (err) {
+        // 在席情報は補助的なのでエラーは握りつぶし（行を出さない）
+        console.warn('[proto] グループ在席情報の取得に失敗:', err);
+      } finally {
+        if (!cancelled) setStatsLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [groupId]);
+
   const handleGroupChange = (e) => {
     const newGroupId = e.target.value;
     if (!newGroupId) {
       setGroupId('');
+      setPermOk(null); // [proto] 未選択に戻したら権限状態をリセット
       return;
     }
     setGroupId(newGroupId);
+
+    // [proto] 投稿権限のプリフライト確認: 選択時に最新の権限を再確認する
+    setPermChecking(true);
+    setPermOk(null);
+    invokeBackend('groups:check-permission', { groupId: newGroupId })
+      .then(ok => setPermOk(!!ok))
+      .catch(err => {
+        console.error('Permission preflight failed', err);
+        setPermOk(false);
+      })
+      .finally(() => setPermChecking(false));
   };
 
   const fetchPosts = async () => {
@@ -366,30 +455,20 @@ export default function Dashboard() {
     setPostToX(false);
     setXText('');
     setEditingId(null);
+    // [proto] 公開投稿の即時編集セッションもクリア
+    setLiveEditingId(null);
+    setLiveEditingGroupId(null);
+    setLiveEditingTitle('');
   };
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    if (!groupId || !title || !text || !scheduledAt) return;
-    setError('');
-
-    // 予約時刻は未来でなければならない（過去だと chrome.alarms が即時発火してしまう）
-    if (new Date(scheduledAt).getTime() <= Date.now()) {
-      setError('予約時刻は現在より未来の日時を指定してください');
-      return;
-    }
-
-    // Prepare recurrence object
+  // ローカル予約投稿の作成/更新本体（土台の handleCreate を切り出したもの）。
+  // 入力バリデーション・過去時刻ガード・重複ガードを通過した後にのみ呼ばれる。
+  // recurrence は state から再計算する（曜日バリデーションは handleCreate 側で実施済み）。
+  const doSchedule = async () => {
     let recurrence = null;
     if (isRecurring) {
-      recurrence = {
-        type: recurrenceType
-      };
+      recurrence = { type: recurrenceType };
       if (recurrenceType === 'weekly') {
-        if (recurrenceDays.length === 0) {
-          setError('Please select at least one day for weekly recurrence.');
-          return;
-        }
         recurrence.days = recurrenceDays;
       }
     }
@@ -427,6 +506,122 @@ export default function Dashboard() {
     } catch (err) {
       setError('Error: ' + err.message);
     }
+  };
+
+  // [proto] Publishedパネルから公開中投稿を左フォームへ読み込み、即時編集モードに入る
+  const startLiveEdit = (post) => {
+    setTitle(post.title || '');
+    setText(post.text || '');
+    setLiveEditingId(post.id);
+    setLiveEditingGroupId(groupId); // 選択中のグループ（Published取得元）
+    setLiveEditingTitle(post.title || '');
+    // 編集モードでは予約系入力は使わない
+    setEditingId(null); // ローカル予約編集とは排他
+    setScheduledAt('');
+    setIsRecurring(false);
+    setRecurrenceDays([]);
+    setError('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // [proto] 即時編集モードを解除（フォームはそのまま、通常のcreate経路に戻す）
+  const cancelLiveEdit = () => {
+    setLiveEditingId(null);
+    setLiveEditingGroupId(null);
+    setLiveEditingTitle('');
+  };
+
+  // [proto] VRChat上の公開投稿をPUTで即時更新（confirm通過後に呼ばれる）
+  const doUpdateLive = async () => {
+    setError('');
+    try {
+      await invokeBackend('posts:update-live', {
+        groupId: liveEditingGroupId,
+        notificationId: liveEditingId,
+        body: {
+          title,
+          text,
+          visibility: 'group',
+          sendNotification: false, // 再通知を避ける
+        },
+      });
+      setToast({ message: '公開投稿を更新しました', type: 'success' });
+      // フォーム / 編集モードをリセット
+      setTitle('');
+      setText('');
+      cancelLiveEdit();
+      // Publishedパネルを再取得して反映を確認
+      fetchPublishedPosts(liveEditingGroupId);
+    } catch (err) {
+      setError('公開投稿の更新に失敗しました: ' + err.message);
+    }
+  };
+
+  // [proto] 公開中お知らせの削除 — ⚠️破壊的・VRChat本番に作用。二段確認(setConfirmDialog)経由でのみ呼ぶ
+  const doDeleteLive = async (post) => {
+    try {
+      await invokeBackend('posts:delete-live', { groupId, notificationId: post.id });
+      setToast({ message: '公開お知らせを削除しました', type: 'success' });
+      fetchPublishedPosts(groupId);
+    } catch (err) {
+      setError('公開お知らせの削除に失敗しました: ' + (err.message || ''));
+    }
+  };
+
+  // 統一フロー（モード優先度: live編集 > local編集 > 新規作成）
+  const handleCreate = async (e) => {
+    e.preventDefault();
+
+    // [1] VRChat公開投稿の編集(PUT) — 破壊的。確認必須。予約系のバリデーションは不要。
+    if (liveEditingId) {
+      if (!title || !text) return;
+      setError('');
+      setConfirmDialog({
+        message: 'VRChat上の公開投稿「' + (liveEditingTitle || title) + '」を更新します。即時反映されます。続行しますか？',
+        onConfirm: () => { setConfirmDialog(null); doUpdateLive(); },
+      });
+      return;
+    }
+
+    // [2]/[3] ローカル予約の更新/新規作成 — 共通の入力・時刻・曜日バリデーション
+    if (!groupId || !title || !text || !scheduledAt) return;
+    setError('');
+
+    // 予約時刻は未来でなければならない（過去だと chrome.alarms が即時発火してしまう）
+    if (new Date(scheduledAt).getTime() <= Date.now()) {
+      setError('予約時刻は現在より未来の日時を指定してください');
+      return;
+    }
+
+    // recurrence の weekly 曜日バリデーション（recurrence は doSchedule 内で再計算する）
+    if (isRecurring && recurrenceType === 'weekly' && recurrenceDays.length === 0) {
+      setError('Please select at least one day for weekly recurrence.');
+      return;
+    }
+
+    // [2] ローカル予約の更新は重複チェック不要（既存投稿の編集なので）
+    if (editingId) {
+      doSchedule();
+      return;
+    }
+
+    // [3] 新規ローカル予約のみ、公開中の同名お知らせを重複ガード。
+    // ガードは非破壊。GET失敗時はスキップしてそのまま投稿を続行（投稿を妨げない）。
+    try {
+      const live = await invokeBackend('posts:get-published', { groupId });
+      const dup = (live || []).some(p => (p.title || '').trim().toLowerCase() === title.trim().toLowerCase());
+      if (dup) {
+        setConfirmDialog({
+          message: '「' + title + '」と同名のお知らせが既にVRChatグループに公開中です。続行しますか？',
+          onConfirm: () => { setConfirmDialog(null); doSchedule(); },
+        });
+        return;
+      }
+    } catch (_) {
+      // ガード用GETの失敗は致命的ではない。続行する。
+    }
+
+    doSchedule();
   };
 
   const handleDelete = async (id) => {
@@ -850,6 +1045,49 @@ export default function Dashboard() {
                     }
                   </span>
                 </div>
+
+                {/* [proto] 投稿権限のプリフライト確認: 権限が確認できない場合の警告 */}
+                {permOk === false && (
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.8rem', color: 'var(--danger)' }}>
+                    このグループの投稿権限が確認できません。権限が変更された可能性があります。「グループ更新」をお試しください。
+                  </div>
+                )}
+
+                {/* [proto] グループ在席ダッシュボード: 選択グループの薄いインフォ行（非破壊・GETのみ） */}
+                {groupId && (statsLoading && !groupStats[groupId] ? (
+                  <div
+                    style={{
+                      marginTop: '0.4rem',
+                      padding: '0.4rem 0.6rem',
+                      background: 'var(--well)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    在席情報を読み込み中…
+                  </div>
+                ) : groupStats[groupId] ? (
+                  <div
+                    style={{
+                      marginTop: '0.4rem',
+                      padding: '0.4rem 0.6rem',
+                      background: 'var(--well)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span>👥 {groupStats[groupId].memberCount?.toLocaleString() ?? '—'}</span>
+                    <span>🟢 オンライン {groupStats[groupId].onlineMemberCount ?? '—'}</span>
+                    <span>🌐 アクティブ {groupStats[groupId].instances.length}</span>
+                  </div>
+                ) : null)}
               </div>
 
               <div className={styles.formGroup}>
@@ -1046,11 +1284,23 @@ export default function Dashboard() {
                 )}
               </div>
 
+              {/* [proto] 即時編集モード中の注意書き */}
+              {liveEditingId && (
+                <div style={{ marginBottom: '0.6rem', padding: '0.6rem 0.75rem', background: 'var(--status-failed-bg)', border: '1px solid var(--danger)', borderRadius: '8px', fontSize: '0.8rem', color: 'var(--danger)' }}>
+                  ⚠️ VRChat上の公開投稿「{liveEditingTitle}」を編集中です。「公開中の投稿を更新」を押すと<strong>即時反映</strong>されます（予約ではありません）。
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <button type="submit" className={styles.button} style={{ flex: 1 }}>
-                  {editingId ? '更新する' : 'Schedule Post'}
+                <button
+                  type="submit"
+                  className={styles.button}
+                  style={{ flex: 1, ...((!liveEditingId && (permChecking || permOk === false)) ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
+                  disabled={!liveEditingId && (permChecking || permOk === false)}
+                >
+                  {liveEditingId ? '公開中の投稿を更新' : editingId ? '更新する' : (permChecking ? '確認中…' : 'Schedule Post')}
                 </button>
-                {editingId && (
+                {(editingId || liveEditingId) && (
                   <button
                     type="button"
                     className={styles.button}
@@ -1061,7 +1311,10 @@ export default function Dashboard() {
                       color: 'var(--text-muted)',
                       border: '1px solid var(--border)',
                     }}
-                    onClick={() => { resetForm(); setError(''); }}
+                    onClick={() => {
+                      if (liveEditingId) { cancelLiveEdit(); } else { resetForm(); }
+                      setError('');
+                    }}
                   >
                     キャンセル
                   </button>
@@ -1073,24 +1326,111 @@ export default function Dashboard() {
           <section className={styles.card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h2 className={styles.cardTitle} style={{ marginBottom: 0 }}>
-                {showTrash ? 'Trash Can' : 'Scheduled Queue'}
+                {publishedMode ? 'Published' : (showTrash ? 'Trash Can' : 'Scheduled Queue')}
               </h2>
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <button
                   className={styles.retryBtn}
                   style={{ fontSize: '0.85rem', color: 'var(--accent-hover)', marginRight: '0.75rem' }}
-                  onClick={fetchPosts}
+                  onClick={publishedMode ? () => fetchPublishedPosts(groupId) : fetchPosts}
                 >Refresh</button>
+
+                {/* [proto] 投稿済みお知らせ一覧トグル (GET /groups/{id}/posts) */}
+                <button
+                  className={`${styles.trashToggle} ${publishedMode ? styles.trashToggleActive : ''}`}
+                  style={{ marginRight: '0.5rem' }}
+                  onClick={() => setPublishedMode(!publishedMode)}
+                >
+                  {publishedMode ? 'Hide Published' : 'Published'}
+                </button>
 
                 <button
                   className={`${styles.trashToggle} ${showTrash ? styles.trashToggleActive : ''}`}
                   onClick={() => setShowTrash(!showTrash)}
+                  disabled={publishedMode}
+                  style={publishedMode ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
                 >
                   {showTrash ? 'Show Queue' : 'Show Trash'}
                 </button>
               </div>
             </div>
 
+            {/* [proto] 投稿済みお知らせ一覧 (VRChat上に実在する公開中のお知らせ)。各行に本番編集/本番削除 */}
+            {publishedMode ? (
+              <div className={styles.postList}>
+                {!groupId && (
+                  <div className={styles.emptyState}>
+                    <div className={styles.emptyStateIcon}>📢</div>
+                    <div className={styles.emptyStateTitle}>グループ未選択</div>
+                    <div className={styles.emptyStateHint}>左のフォームでグループを選択してください</div>
+                  </div>
+                )}
+                {groupId && publishedLoading && (
+                  <div className={styles.emptyState}>
+                    <div className={styles.emptyStateIcon}>⏳</div>
+                    <div className={styles.emptyStateTitle}>読み込み中...</div>
+                    <div className={styles.emptyStateHint}>Loading published announcements</div>
+                  </div>
+                )}
+                {groupId && !publishedLoading && publishedError && (
+                  <div className={styles.emptyState}>
+                    <div className={styles.emptyStateIcon}>⚠️</div>
+                    <div className={styles.emptyStateTitle} style={{ color: 'var(--danger)' }}>取得に失敗しました</div>
+                    <div className={styles.emptyStateHint}>{publishedError}</div>
+                  </div>
+                )}
+                {groupId && !publishedLoading && !publishedError && publishedPosts.length === 0 && (
+                  <div className={styles.emptyState}>
+                    <div className={styles.emptyStateIcon}>📭</div>
+                    <div className={styles.emptyStateTitle}>公開中のお知らせはありません</div>
+                    <div className={styles.emptyStateHint}>No published announcements</div>
+                  </div>
+                )}
+                {groupId && !publishedLoading && !publishedError && publishedPosts.map(post => (
+                  <div
+                    key={post.id}
+                    className={styles.postItem}
+                    style={liveEditingId === post.id ? { borderLeft: '2px solid var(--accent)' } : {}}
+                  >
+                    <div className={styles.postInfo}>
+                      <div className={styles.postTitle}>
+                        {/* visibilityバッジ (group/public) */}
+                        <span style={{ fontSize: '0.7rem', fontWeight: 600, background: 'transparent', border: '1px solid var(--badge-border)', color: 'var(--badge-text)', padding: '1px 6px', borderRadius: '6px', marginRight: '6px', verticalAlign: '1px' }}>
+                          {post.visibility === 'public' ? 'public' : 'group'}
+                        </span>
+                        {post.imageId && <span style={{ fontSize: '0.7rem', fontWeight: 600, background: 'transparent', border: '1px solid var(--badge-border)', color: 'var(--badge-text)', padding: '1px 6px', borderRadius: '6px', marginRight: '6px', verticalAlign: '1px' }}>IMG</span>}
+                        {post.title}
+                      </div>
+                      <div className={styles.postMeta}>
+                        {post.createdAt ? new Date(post.createdAt).toLocaleString() : '—'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      {/* [proto] この公開投稿を左フォームへ読み込み、即時編集(PUT)へ */}
+                      <button
+                        className={styles.retryBtn}
+                        style={liveEditingId === post.id ? { color: 'var(--accent-hover)' } : {}}
+                        onClick={() => startLiveEdit(post)}
+                        title="この公開投稿を編集してVRChatに即時反映"
+                      >
+                        ✎ 本番を編集
+                      </button>
+                      {/* ⚠️本番削除: ローカルキューの「×」とは別物。VRChat上のお知らせをDELETE */}
+                      <button
+                        className={styles.deleteLiveBtn}
+                        onClick={() => setConfirmDialog({
+                          message: 'VRChat上のお知らせ「' + post.title + '」を完全に削除します。元に戻せません。本当に削除しますか？',
+                          onConfirm: () => { setConfirmDialog(null); doDeleteLive(post); }
+                        })}
+                        title="VRChat上のお知らせを削除"
+                      >
+                        🗑 本番削除
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className={styles.postList}>
               {posts.length === 0 && (
                 <div className={styles.emptyState}>
@@ -1174,6 +1514,7 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+            )}
           </section>
         </div>
 

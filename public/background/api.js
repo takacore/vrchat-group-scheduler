@@ -420,6 +420,47 @@ export const api = {
         return getGroupDetail(groupId);
     },
 
+    // [proto] 投稿済みお知らせ一覧 — 非破壊・GETのみ。GET /groups/{id}/posts → { posts: [] }
+    // （重複投稿ガード／Published一覧／本番編集・削除 が共有する取得経路）
+    async getGroupPosts(groupId, { n = 60, offset = 0 } = {}) {
+        const res = await apiRequest(`/groups/${groupId}/posts?n=${n}&offset=${offset}`);
+        if (res.status === 404) return [];
+        const data = await res.json();
+        return data.posts || [];
+    },
+
+    // [proto] グループ在席ダッシュボード: アクティブインスタンス一覧を取得（GETのみ・非破壊）
+    async getGroupInstances(groupId) {
+        const res = await apiRequest(`/groups/${groupId}/instances`);
+        if (res.status === 404) return [];
+        return res.json();
+    },
+
+    // [proto] 投稿権限のプリフライト確認: 既存の判定ロジックを流用し、失敗時は false 扱い。
+    async checkPostPermission(groupId) {
+        try {
+            return await checkAnnouncementPermission(groupId);
+        } catch {
+            return false;
+        }
+    },
+
+    // [proto] 公開中お知らせの編集 — 破壊的: PUT /groups/{id}/posts/{notificationId}
+    // body = CreateGroupPostRequest (title, text, visibility, sendNotification; 任意 roleIds, imageId)
+    async updateGroupPost(groupId, notificationId, body) {
+        const res = await apiRequest(`/groups/${groupId}/posts/${notificationId}`, {
+            method: 'PUT',
+            body: JSON.stringify(body)
+        });
+        return res.json();
+    },
+
+    // [proto] 公開中お知らせの削除 — ⚠️破壊的。DELETE /groups/{id}/posts/{notificationId}
+    async deleteGroupPost(groupId, notificationId) {
+        const res = await apiRequest(`/groups/${groupId}/posts/${notificationId}`, { method: 'DELETE' });
+        return res.json();
+    },
+
     async createGroupPost(groupId, title, text, sendNotification = false, imageId = null) {
         const body = { title, text, sendNotification };
         if (imageId) body.imageId = imageId;

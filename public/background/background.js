@@ -165,6 +165,21 @@ async function handleApiCall({ action, params }) {
             return api.refreshUserGroups(params.userId);
         case 'getGroup':
             return api.getGroup(params.groupId);
+        case 'getGroupPosts':
+            // [proto] 公開中お知らせ取得（重複ガード/Published一覧/本番編集・削除が共有）
+            return api.getGroupPosts(params.groupId, params);
+        case 'getGroupInstances':
+            // [proto] グループ在席ダッシュボード用のアクティブインスタンス取得
+            return api.getGroupInstances(params.groupId);
+        case 'checkPostPermission':
+            // [proto] 投稿権限のプリフライト確認
+            return api.checkPostPermission(params.groupId);
+        case 'updateGroupPost':
+            // [proto] 公開中お知らせの編集（破壊的・PUT）
+            return api.updateGroupPost(params.groupId, params.notificationId, params.body);
+        case 'deleteGroupPost':
+            // [proto] 公開中お知らせの削除（破壊的・DELETE）
+            return api.deleteGroupPost(params.groupId, params.notificationId);
         case 'xCheckLogin':
             return xApi.checkLogin();
         case 'xPostNow': {
