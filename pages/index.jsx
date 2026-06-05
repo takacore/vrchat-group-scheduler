@@ -25,6 +25,10 @@ export default function Dashboard() {
   const [liveEditingId, setLiveEditingId] = useState(null); // null | notificationId(=GroupPost.id)
   const [liveEditingGroupId, setLiveEditingGroupId] = useState(null);
   const [liveEditingTitle, setLiveEditingTitle] = useState('');
+  // 元投稿の公開範囲/画像/ロール限定を保持（PUTは全体置換のため省くと失われる）
+  const [liveEditingVisibility, setLiveEditingVisibility] = useState(null);
+  const [liveEditingImageId, setLiveEditingImageId] = useState(null);
+  const [liveEditingRoleIds, setLiveEditingRoleIds] = useState(null);
   const [groupRefreshing, setGroupRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [showScanConfirm, setShowScanConfirm] = useState(false);
@@ -352,25 +356,22 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [groupId]);
 
-  const handleGroupChange = (e) => {
-    const newGroupId = e.target.value;
-    if (!newGroupId) {
-      setGroupId('');
-      setPermOk(null); // [proto] 未選択に戻したら権限状態をリセット
-      return;
-    }
-    setGroupId(newGroupId);
-
-    // [proto] 投稿権限のプリフライト確認: 選択時に最新の権限を再確認する
+  // [proto] 投稿権限のプリフライト: groupId変更(手動/プログラム的=Edit/Clone/Retry含む)のたびに再確認。
+  // 助言的（送信はブロックしない）。一時失敗(401/network等)は「不明(null)」扱いで誤警告を避ける。
+  useEffect(() => {
+    if (!groupId) { setPermOk(null); setPermChecking(false); return; }
+    let cancelled = false;
     setPermChecking(true);
     setPermOk(null);
-    invokeBackend('groups:check-permission', { groupId: newGroupId })
-      .then(ok => setPermOk(!!ok))
-      .catch(err => {
-        console.error('Permission preflight failed', err);
-        setPermOk(false);
-      })
-      .finally(() => setPermChecking(false));
+    invokeBackend('groups:check-permission', { groupId })
+      .then(ok => { if (!cancelled) setPermOk(!!ok); })
+      .catch(() => { if (!cancelled) setPermOk(null); })
+      .finally(() => { if (!cancelled) setPermChecking(false); });
+    return () => { cancelled = true; };
+  }, [groupId]);
+
+  const handleGroupChange = (e) => {
+    setGroupId(e.target.value || '');
   };
 
   const fetchPosts = async () => {
@@ -515,6 +516,10 @@ export default function Dashboard() {
     setLiveEditingId(post.id);
     setLiveEditingGroupId(groupId); // 選択中のグループ（Published取得元）
     setLiveEditingTitle(post.title || '');
+    // 元投稿の公開範囲/画像/ロールを退避（更新時に保持する。GroupPostレスポンスは roleId=配列）
+    setLiveEditingVisibility(post.visibility || 'group');
+    setLiveEditingImageId(post.imageId || null);
+    setLiveEditingRoleIds(post.roleIds || post.roleId || null);
     // 編集モードでは予約系入力は使わない
     setEditingId(null); // ローカル予約編集とは排他
     setScheduledAt('');
@@ -529,21 +534,29 @@ export default function Dashboard() {
     setLiveEditingId(null);
     setLiveEditingGroupId(null);
     setLiveEditingTitle('');
+    setLiveEditingVisibility(null);
+    setLiveEditingImageId(null);
+    setLiveEditingRoleIds(null);
   };
 
   // [proto] VRChat上の公開投稿をPUTで即時更新（confirm通過後に呼ばれる）
   const doUpdateLive = async () => {
     setError('');
     try {
+      // PUTは全体置換。元投稿の visibility / imageId / roleIds を保持して
+      // public→group 降格・画像欠落・ロール限定の喪失を防ぐ。
+      const body = {
+        title,
+        text,
+        visibility: liveEditingVisibility || 'group',
+        sendNotification: false, // 再通知を避ける
+      };
+      if (liveEditingImageId) body.imageId = liveEditingImageId;
+      if (Array.isArray(liveEditingRoleIds) && liveEditingRoleIds.length) body.roleIds = liveEditingRoleIds;
       await invokeBackend('posts:update-live', {
         groupId: liveEditingGroupId,
         notificationId: liveEditingId,
-        body: {
-          title,
-          text,
-          visibility: 'group',
-          sendNotification: false, // 再通知を避ける
-        },
+        body,
       });
       setToast({ message: '公開投稿を更新しました', type: 'success' });
       // フォーム / 編集モードをリセット
@@ -559,10 +572,12 @@ export default function Dashboard() {
 
   // [proto] 公開中お知らせの削除 — ⚠️破壊的・VRChat本番に作用。二段確認(setConfirmDialog)経由でのみ呼ぶ
   const doDeleteLive = async (post) => {
+    // 投稿自身の groupId を優先（確認ダイアログ表示中にグループを切り替えても誤爆しない）
+    const gid = post.groupId || groupId;
     try {
-      await invokeBackend('posts:delete-live', { groupId, notificationId: post.id });
+      await invokeBackend('posts:delete-live', { groupId: gid, notificationId: post.id });
       setToast({ message: '公開お知らせを削除しました', type: 'success' });
-      fetchPublishedPosts(groupId);
+      fetchPublishedPosts(gid);
     } catch (err) {
       setError('公開お知らせの削除に失敗しました: ' + (err.message || ''));
     }
@@ -666,6 +681,7 @@ export default function Dashboard() {
     setPostToX(!!post.postToX);
     setXText(post.xText || '');
 
+    cancelLiveEdit(); // 本番編集セッションを必ず解除（破壊的PUTへのすり替え防止）
     setEditingId(null); // Retryは新規作成として扱う
     setError('');
   };
@@ -706,6 +722,7 @@ export default function Dashboard() {
       setRecurrenceDays([]);
     }
 
+    cancelLiveEdit(); // 本番編集セッションを必ず解除（ローカル予約編集と排他）
     setEditingId(post.id);
     setError('');
     // Scroll to top to see form
@@ -750,6 +767,7 @@ export default function Dashboard() {
       // Should have recurrence obj if status is recurring, but just in case
     }
 
+    cancelLiveEdit(); // 本番編集セッションを必ず解除（Cloneは新規作成）
     setEditingId(null); // Cloneは新規作成として扱う
     setError('');
     // Scroll to top to see form
@@ -1011,7 +1029,7 @@ export default function Dashboard() {
 
         <div className={styles.grid}>
           <section className={styles.card}>
-            <h2 className={styles.cardTitle}>{editingId ? '予約投稿を編集' : 'New Scheduled Post'}</h2>
+            <h2 className={styles.cardTitle}>{liveEditingId ? '公開中の投稿を編集' : editingId ? '予約投稿を編集' : 'New Scheduled Post'}</h2>
             <form onSubmit={handleCreate}>
               <div className={styles.formGroup}>
                 <label className={styles.label}>Group</label>
@@ -1295,10 +1313,9 @@ export default function Dashboard() {
                 <button
                   type="submit"
                   className={styles.button}
-                  style={{ flex: 1, ...((!liveEditingId && (permChecking || permOk === false)) ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
-                  disabled={!liveEditingId && (permChecking || permOk === false)}
+                  style={{ flex: 1 }}
                 >
-                  {liveEditingId ? '公開中の投稿を更新' : editingId ? '更新する' : (permChecking ? '確認中…' : 'Schedule Post')}
+                  {liveEditingId ? '公開中の投稿を更新' : editingId ? '更新する' : 'Schedule Post'}
                 </button>
                 {(editingId || liveEditingId) && (
                   <button
@@ -1339,7 +1356,7 @@ export default function Dashboard() {
                 <button
                   className={`${styles.trashToggle} ${publishedMode ? styles.trashToggleActive : ''}`}
                   style={{ marginRight: '0.5rem' }}
-                  onClick={() => setPublishedMode(!publishedMode)}
+                  onClick={() => { if (publishedMode) cancelLiveEdit(); setPublishedMode(!publishedMode); }}
                 >
                   {publishedMode ? 'Hide Published' : 'Published'}
                 </button>

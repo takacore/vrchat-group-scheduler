@@ -436,13 +436,11 @@ export const api = {
         return res.json();
     },
 
-    // [proto] 投稿権限のプリフライト確認: 既存の判定ロジックを流用し、失敗時は false 扱い。
+    // [proto] 投稿権限のプリフライト確認: 既存の判定ロジックを流用。
+    // 権限が無いと「明示的に判定できた」場合のみ false。401/network 等の一時失敗は例外を
+    // 伝播させ、UI側で「不明」扱いにする（誤って権限なし表示・送信抑制しないため）。
     async checkPostPermission(groupId) {
-        try {
-            return await checkAnnouncementPermission(groupId);
-        } catch {
-            return false;
-        }
+        return checkAnnouncementPermission(groupId);
     },
 
     // [proto] 公開中お知らせの編集 — 破壊的: PUT /groups/{id}/posts/{notificationId}
