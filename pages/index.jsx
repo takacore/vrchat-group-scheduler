@@ -484,8 +484,8 @@ export default function Dashboard() {
   if (loading) return <div className={styles.container}>Loading...</div>;
   if (authNeedLogin) return (
     <div className={styles.container} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center' }}>
-      <h2 style={{ color: '#fff', marginBottom: '1rem' }}>VRChatのログインが必要です</h2>
-      <p style={{ color: '#a0aec0', marginBottom: '2rem' }}>
+      <h2 style={{ color: 'var(--text)', marginBottom: '1rem' }}>VRChatのログインが必要です</h2>
+      <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>
         グループ情報の取得や投稿を行うには、<br />
         ブラウザでVRChat公式サイトにログインしている必要があります。
       </p>
@@ -498,7 +498,7 @@ export default function Dashboard() {
       </button>
       <button
         className={styles.button}
-        style={{ padding: '0.6rem 1.5rem', fontSize: '1rem', backgroundColor: '#4a5568', width: 'auto' }}
+        style={{ padding: '0.6rem 1.5rem', fontSize: '1rem', backgroundColor: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', width: 'auto' }}
         onClick={() => window.location.reload()}
       >
         ログイン後に再読み込み
@@ -511,9 +511,54 @@ export default function Dashboard() {
     <>
       <style dangerouslySetInnerHTML={{
         __html: `
-        body { 
-          margin: 0; 
-          background-color: #1a202c; 
+        :root {
+          /* Surfaces (page -> card -> raised -> recessed well) */
+          --bg: #0F141A;
+          --surface: #161D26;
+          --surface-2: #1C2530;
+          --well: #0E1319;
+          /* Hairlines */
+          --border: #232C38;
+          --border-strong: #30404F;
+          /* Text ramp */
+          --text: #F4F6FA;
+          --text-secondary: #C2CCD9;
+          --text-muted: #8593A3;
+          --text-subtle: #5A6675;
+          /* One disciplined accent (indigo) */
+          --accent: #6E79F0;
+          --accent-hover: #8A93FF;
+          --accent-pressed: #5A63D6;
+          --accent-tint: rgba(110, 121, 240, 0.14);
+          --on-accent: #0E1319;
+          /* Semantic */
+          --ok: #4ADE80;
+          --warn: #F0B65A;
+          --danger: #F87171;
+          /* Status pills (tinted-translucent) */
+          --status-pending-fg: #F0B65A;
+          --status-pending-bg: rgba(214, 158, 46, 0.16);
+          --status-posted-fg: #4ADE80;
+          --status-posted-bg: rgba(56, 161, 105, 0.16);
+          --status-failed-fg: #F87171;
+          --status-failed-bg: rgba(229, 62, 62, 0.16);
+          --status-neutral-fg: #94A3B8;
+          --status-neutral-bg: rgba(113, 128, 150, 0.14);
+          --status-recurring-fg: #8A93FF;
+          --status-recurring-bg: rgba(110, 121, 240, 0.14);
+          /* Badges */
+          --badge-border: #2A3441;
+          --badge-text: #A8B4C2;
+          --badge-x-bg: #15191E;
+          --badge-x-text: #E7E9EA;
+          /* Elevation */
+          --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+          --shadow-elevated: 0 16px 48px rgba(0, 0, 0, 0.6);
+          --overlay: rgba(8, 10, 14, 0.66);
+        }
+        body {
+          margin: 0;
+          background-color: var(--bg);
         }
         * {
           box-sizing: border-box;
@@ -536,19 +581,21 @@ export default function Dashboard() {
               title="別タブで開く"
               style={{
                 marginRight: '0.5rem',
-                fontSize: '0.9rem',
+                width: 'auto',
+                height: 'auto',
+                fontSize: '0.8rem',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.4rem',
-                padding: '0.4rem 0.8rem',
-                background: '#2d3748',
+                padding: '0.35rem 0.7rem',
+                background: 'transparent',
                 borderRadius: '6px',
-                color: '#e2e8f0',
-                fontWeight: 'bold',
-                border: '1px solid #4a5568'
+                color: 'var(--text-muted)',
+                fontWeight: 600,
+                border: '1px solid var(--border)'
               }}
             >
-              <span>↗️全画面</span>
+              <span>⤢ 全画面</span>
             </button>
             <span className={styles.username}>{user.displayName}</span>
             <img src={user.userIcon || 'https://assets.vrchat.com/www/images/default_avatar.png'} className={styles.avatar} alt="Avatar" />
@@ -563,7 +610,7 @@ export default function Dashboard() {
               <p className={styles.modalText}>
                 投稿権限のあるグループを確認するため、参加中のグループをスキャンします。
                 <br /><br />
-                <span style={{ color: '#a0aec0', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                   ※ 初回のみ全グループの権限を確認します。スキャン結果はキャッシュされるため、2回目以降はすぐに表示されます。
                 </span>
               </p>
@@ -596,7 +643,7 @@ export default function Dashboard() {
                   {scanProgress.phase === 'fetching' ? (
                     <span>グループ一覧を取得中...</span>
                   ) : scanProgress.phase === 'waiting' ? (
-                    <span style={{ color: '#d69e2e', fontWeight: 'bold' }}>
+                    <span style={{ color: 'var(--warn)', fontWeight: 'bold' }}>
                       API制限のため一時待機中... ({Math.round(scanProgress.retryIn)}秒)
                     </span>
                   ) : (
@@ -635,8 +682,8 @@ export default function Dashboard() {
               </div>
               {downloadProgress && (
                 <div style={{ marginTop: '0.5rem' }}>
-                  <div style={{ background: '#1a202c', borderRadius: '3px', height: '4px', overflow: 'hidden' }}>
-                    <div style={{ width: `${downloadProgress.percent}%`, height: '100%', background: '#48bb78', transition: 'width 0.3s ease', borderRadius: '3px' }} />
+                  <div style={{ background: 'var(--well)', borderRadius: '3px', height: '4px', overflow: 'hidden' }}>
+                    <div style={{ width: `${downloadProgress.percent}%`, height: '100%', background: 'var(--ok)', transition: 'width 0.3s ease', borderRadius: '3px' }} />
                   </div>
                   <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>ダウンロード中... {downloadProgress.percent}%</span>
                 </div>
@@ -644,7 +691,7 @@ export default function Dashboard() {
             </div>
             <div className={styles.updateBannerActions}>
               {updateDownloaded ? (
-                <button className={styles.updateDownloadBtn} onClick={handleInstallUpdate} style={{ backgroundColor: '#48bb78', color: '#1a202c' }}>
+                <button className={styles.updateDownloadBtn} onClick={handleInstallUpdate} style={{ backgroundColor: 'var(--ok)', color: 'var(--bg)' }}>
                   再起動してアップデート
                 </button>
               ) : downloadProgress ? (
@@ -686,7 +733,7 @@ export default function Dashboard() {
                   <span
                     onClick={handleRefreshGroups}
                     style={{
-                      color: (groupRefreshing || refreshCooldown > 0) ? '#4a5568' : '#63b3ed',
+                      color: (groupRefreshing || refreshCooldown > 0) ? 'var(--text-subtle)' : 'var(--accent-hover)',
                       cursor: (groupRefreshing || refreshCooldown > 0) ? 'default' : 'pointer',
                       textDecoration: (groupRefreshing || refreshCooldown > 0) ? 'none' : 'underline',
                     }}
@@ -727,9 +774,9 @@ export default function Dashboard() {
                   type="file"
                   accept="image/png,image/jpeg,image/gif"
                   onChange={handleImageChange}
-                  style={{ color: '#e2e8f0', fontSize: '0.9rem' }}
+                  style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}
                 />
-                <div style={{ fontSize: '0.7rem', color: '#d69e2e', marginTop: '0.25rem' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--warn)', marginTop: '0.25rem' }}>
                   ※ VRChat側の画像添付は VRC+ サブスクライブ必須で、最低 512×512px 程度必要です。条件外なら画像なしで投稿継続し、X同時投稿には影響しません。
                 </div>
                 {imageDataUrl && (
@@ -737,19 +784,19 @@ export default function Dashboard() {
                     <img
                       src={imageDataUrl}
                       alt="preview"
-                      style={{ maxWidth: '120px', maxHeight: '80px', borderRadius: '4px', border: '1px solid #4a5568' }}
+                      style={{ maxWidth: '120px', maxHeight: '80px', borderRadius: '6px', border: '1px solid var(--border)' }}
                     />
                     <div style={{ flex: 1 }}>
-                      <div style={{ color: '#a0aec0', fontSize: '0.8rem', wordBreak: 'break-all' }}>{imageName}</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', wordBreak: 'break-all' }}>{imageName}</div>
                       <button
                         type="button"
                         onClick={() => { setImageDataUrl(''); setImageName(''); }}
                         style={{
                           marginTop: '0.3rem',
-                          background: '#4a5568',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '3px',
+                          background: 'var(--surface-2)',
+                          color: 'var(--text)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '6px',
                           padding: '0.2rem 0.6rem',
                           fontSize: '0.75rem',
                           cursor: 'pointer'
@@ -781,11 +828,11 @@ export default function Dashboard() {
                     checked={isRecurring}
                     onChange={e => setIsRecurring(e.target.checked)}
                   />
-                  <label htmlFor="recur" style={{ marginBottom: 0, color: '#fff', fontWeight: 'bold' }}>Repeat Schedule</label>
+                  <label htmlFor="recur" style={{ marginBottom: 0, color: 'var(--text-secondary)', fontWeight: 600 }}>Repeat Schedule</label>
                 </div>
 
                 {isRecurring && (
-                  <div style={{ marginLeft: '1.5rem', padding: '0.5rem', background: '#2d3748', borderRadius: '4px' }}>
+                  <div style={{ marginLeft: '1.5rem', padding: '0.75rem', background: 'var(--well)', border: '1px solid var(--border)', borderRadius: '8px' }}>
                     <div style={{ marginBottom: '0.5rem' }}>
                       <label className={styles.label} style={{ fontSize: '0.9rem' }}>Frequency</label>
                       <select
@@ -810,11 +857,12 @@ export default function Dashboard() {
                               type="button"
                               onClick={() => handleDayToggle(idx)}
                               style={{
-                                background: recurrenceDays.includes(idx) ? '#63b3ed' : '#4a5568',
-                                color: '#fff',
-                                border: 'none',
-                                borderRadius: '3px',
-                                padding: '0.3rem 0.5rem',
+                                background: recurrenceDays.includes(idx) ? 'var(--accent)' : 'transparent',
+                                color: recurrenceDays.includes(idx) ? 'var(--on-accent)' : 'var(--text-muted)',
+                                border: recurrenceDays.includes(idx) ? '1px solid transparent' : '1px solid var(--border)',
+                                borderRadius: '8px',
+                                fontWeight: 600,
+                                padding: '0.3rem 0.55rem',
                                 fontSize: '0.8rem',
                                 cursor: 'pointer'
                               }}
@@ -825,7 +873,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                     )}
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#a0aec0' }}>
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                       Will repeat at the same time as "Start Time".
                     </div>
                   </div>
@@ -839,7 +887,7 @@ export default function Dashboard() {
                   checked={notification}
                   onChange={e => setNotification(e.target.checked)}
                 />
-                <label htmlFor="noti" style={{ marginBottom: 0, color: '#fff' }}>Send Notification to Group</label>
+                <label htmlFor="noti" style={{ marginBottom: 0, color: 'var(--text-secondary)' }}>Send Notification to Group</label>
               </div>
 
               <div className={styles.formGroup}>
@@ -850,12 +898,12 @@ export default function Dashboard() {
                     checked={postToX}
                     onChange={e => setPostToX(e.target.checked)}
                   />
-                  <label htmlFor="postX" style={{ marginBottom: 0, color: '#fff', fontWeight: 'bold' }}>X(Twitter)にも同時投稿</label>
+                  <label htmlFor="postX" style={{ marginBottom: 0, color: 'var(--text-secondary)', fontWeight: 600 }}>X(Twitter)にも同時投稿</label>
                   <span
                     onClick={handleCheckXLogin}
                     style={{
                       marginLeft: 'auto',
-                      color: xLoggedIn === true ? '#48bb78' : xLoggedIn === false ? '#f56565' : '#63b3ed',
+                      color: xLoggedIn === true ? 'var(--ok)' : xLoggedIn === false ? 'var(--danger)' : 'var(--accent-hover)',
                       cursor: 'pointer',
                       textDecoration: 'underline',
                       fontSize: '0.8rem',
@@ -867,7 +915,7 @@ export default function Dashboard() {
                 </div>
 
                 {postToX && (
-                  <div style={{ marginLeft: '1.5rem', padding: '0.5rem', background: '#2d3748', borderRadius: '4px' }}>
+                  <div style={{ marginLeft: '1.5rem', padding: '0.75rem', background: 'var(--well)', border: '1px solid var(--border)', borderRadius: '8px' }}>
                     <label className={styles.label} style={{ fontSize: '0.9rem' }}>
                       Xポスト本文（空欄ならTitle+Messageを使用、280字以内）
                     </label>
@@ -879,15 +927,15 @@ export default function Dashboard() {
                       maxLength={280}
                       placeholder={`${title}\n\n${text}`.slice(0, 280)}
                     />
-                    <div style={{ fontSize: '0.75rem', color: '#a0aec0', textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'right' }}>
                       {(xText || `${title}\n\n${text}`).length} / 280
                     </div>
                     {imageDataUrl && (
-                      <div style={{ fontSize: '0.75rem', color: '#90cdf4' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--accent-hover)' }}>
                         ↑ アップロードした画像も同時に投稿します
                       </div>
                     )}
-                    <div style={{ fontSize: '0.75rem', color: '#d69e2e', marginTop: '0.3rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--warn)', marginTop: '0.3rem' }}>
                       ※ ブラウザでX(Twitter)にログイン済みであることが必要です
                     </div>
                   </div>
@@ -905,8 +953,8 @@ export default function Dashboard() {
               </h2>
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <button
-                  className={styles.deleteBtn}
-                  style={{ fontSize: '1rem', color: '#63b3ed', marginRight: '1rem' }}
+                  className={styles.retryBtn}
+                  style={{ fontSize: '0.85rem', color: 'var(--accent-hover)', marginRight: '0.75rem' }}
                   onClick={fetchPosts}
                 >Refresh</button>
 
@@ -920,31 +968,37 @@ export default function Dashboard() {
             </div>
 
             <div className={styles.postList}>
-              {posts.length === 0 && <p style={{ color: '#718096' }}>No posts found.</p>}
+              {posts.length === 0 && (
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyStateIcon}>{showTrash ? '🗑️' : '🗓️'}</div>
+                  <div className={styles.emptyStateTitle}>{showTrash ? 'ゴミ箱は空です' : '予約された投稿はありません'}</div>
+                  <div className={styles.emptyStateHint}>{showTrash ? 'Trash is empty' : '左のフォームから新しい投稿をスケジュールできます'}</div>
+                </div>
+              )}
               {posts.map(post => (
-                <div key={post.id} className={styles.postItem} style={post.status === 'recurring' ? { borderLeft: '4px solid #63b3ed', background: '#2a4365' } : {}}>
+                <div key={post.id} className={styles.postItem} style={post.status === 'recurring' ? { borderLeft: '2px solid var(--accent)' } : {}}>
                   <div className={styles.postInfo}>
                     <div className={styles.postTitle}>
-                      {post.status === 'recurring' && <span style={{ fontSize: '0.8rem', background: '#3182ce', padding: '2px 6px', borderRadius: '4px', marginRight: '6px' }}>Repeat</span>}
-                      {post.imageDataUrl && <span style={{ fontSize: '0.75rem', background: '#48bb78', padding: '2px 6px', borderRadius: '4px', marginRight: '6px' }}>IMG</span>}
-                      {post.postToX && <span style={{ fontSize: '0.75rem', background: '#1da1f2', padding: '2px 6px', borderRadius: '4px', marginRight: '6px' }}>X</span>}
+                      {post.status === 'recurring' && <span style={{ fontSize: '0.7rem', fontWeight: 600, background: 'transparent', border: '1px solid var(--badge-border)', color: 'var(--badge-text)', padding: '1px 6px', borderRadius: '6px', marginRight: '6px', verticalAlign: '1px' }}>Repeat</span>}
+                      {post.imageDataUrl && <span style={{ fontSize: '0.7rem', fontWeight: 600, background: 'transparent', border: '1px solid var(--badge-border)', color: 'var(--badge-text)', padding: '1px 6px', borderRadius: '6px', marginRight: '6px', verticalAlign: '1px' }}>IMG</span>}
+                      {post.postToX && <span style={{ fontSize: '0.7rem', fontWeight: 600, background: 'var(--badge-x-bg)', color: 'var(--badge-x-text)', padding: '1px 6px', borderRadius: '6px', marginRight: '6px', verticalAlign: '1px' }}>𝕏</span>}
                       {post.title}
                     </div>
                     <div className={styles.postMeta}>
                       {new Date(post.scheduledAt).toLocaleString()} • {post.groupName || post.groupId}
                       {post.recurrence && (
-                        <div style={{ color: '#90cdf4', fontSize: '0.85rem', marginTop: '2px' }}>
+                        <div style={{ color: 'var(--accent-hover)', fontSize: '0.85rem', marginTop: '2px' }}>
                           ↻ {post.recurrence.type.charAt(0).toUpperCase() + post.recurrence.type.slice(1)}
                           {post.recurrence.type === 'weekly' && post.recurrence.days && ` (${post.recurrence.days.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')})`}
                         </div>
                       )}
                       {post.vrcImageError && (
-                        <div style={{ color: '#fc8181', fontSize: '0.8rem', marginTop: '2px' }}>
+                        <div style={{ color: 'var(--danger)', fontSize: '0.8rem', marginTop: '2px' }}>
                           画像添付失敗: {post.vrcImageError}
                         </div>
                       )}
                       {post.xError && (
-                        <div style={{ color: '#fc8181', fontSize: '0.8rem', marginTop: '2px' }}>
+                        <div style={{ color: 'var(--danger)', fontSize: '0.8rem', marginTop: '2px' }}>
                           X投稿失敗: {post.xError}
                         </div>
                       )}
