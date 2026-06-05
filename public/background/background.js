@@ -67,10 +67,17 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         }
 
         const fullySuccess = xResultOk && !vrcImageError;
-        posts[postIndex].status = fullySuccess ? 'completed' : 'partial';
-        if (xError) posts[postIndex].xError = xError;
-        if (vrcImageError) posts[postIndex].vrcImageError = vrcImageError;
-        await storage.set({ posts });
+        // Re-read posts before writing back: the network calls above can take several
+        // seconds, during which the user may have edited/deleted the queue. Updating only
+        // this post by id (and skipping it if trashed meanwhile) avoids clobbering them.
+        const freshSuccess = (await storage.get(['posts'])).posts || posts;
+        const successIdx = freshSuccess.findIndex(p => p.id === postId);
+        if (successIdx !== -1 && freshSuccess[successIdx].status !== 'deleted') {
+            freshSuccess[successIdx].status = fullySuccess ? 'completed' : 'partial';
+            if (xError) freshSuccess[successIdx].xError = xError;
+            if (vrcImageError) freshSuccess[successIdx].vrcImageError = vrcImageError;
+            await storage.set({ posts: freshSuccess });
+        }
 
         const issues = [];
         if (vrcImageError) issues.push(`画像添付失敗`);
@@ -87,9 +94,14 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     } catch (error) {
         console.error('Failed to post:', error);
 
-        posts[postIndex].status = 'failed';
-        posts[postIndex].error = error.message;
-        await storage.set({ posts });
+        // Re-read before write-back (same rationale as the success path).
+        const freshFail = (await storage.get(['posts'])).posts || posts;
+        const failIdx = freshFail.findIndex(p => p.id === postId);
+        if (failIdx !== -1 && freshFail[failIdx].status !== 'deleted') {
+            freshFail[failIdx].status = 'failed';
+            freshFail[failIdx].error = error.message;
+            await storage.set({ posts: freshFail });
+        }
 
         chrome.notifications.create({
             type: 'basic',
@@ -111,8 +123,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             } else if (request.type === 'SCHEDULE_POST') {
                 const { post } = request.payload;
                 const timestamp = new Date(post.scheduledAt).getTime();
-                await scheduler.addJob(post.id, timestamp);
-                sendResponse({ success: true });
+                if (Number.isNaN(timestamp)) {
+                    sendResponse({ success: false, error: '不正なスケジュール時刻です', code: 'SCHEDULE' });
+                } else if (timestamp <= Date.now()) {
+                    sendResponse({ success: false, error: '予約時刻が過去です', code: 'SCHEDULE' });
+                } else if (post.status === 'deleted' || post.status === 'completed') {
+                    sendResponse({ success: false, error: 'この投稿はスケジュールできない状態です', code: 'SCHEDULE' });
+                } else {
+                    await scheduler.addJob(post.id, timestamp);
+                    sendResponse({ success: true });
+                }
             } else if (request.type === 'CANCEL_POST') {
                 const { postId } = request.payload;
                 await scheduler.removeJob(postId);
@@ -128,7 +148,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }
         } catch (error) {
             console.error('Message handling error:', error);
-            sendResponse({ success: false, error: error.message || 'Unknown error occurred' });
+            sendResponse({ success: false, error: error.message || 'Unknown error occurred', code: error.code });
         }
     })();
 

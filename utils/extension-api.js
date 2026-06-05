@@ -51,6 +51,48 @@ export const invokeBackend = async (action, payload = {}) => {
                         else reject(new Error(schedRes?.error || 'Failed to schedule post'));
                     });
                 });
+            case 'posts:update': {
+                // Overwrite an existing scheduled post and re-arm its alarm
+                const { id, ...fields } = payload;
+                return chrome.runtime.sendMessage({ type: 'STORAGE_GET', payload: { keys: ['posts'] } }, (response) => {
+                    const posts = response?.data?.posts || [];
+                    const idx = posts.findIndex(p => p.id === id);
+                    if (idx === -1) {
+                        return reject(new Error('対象の投稿が見つかりません'));
+                    }
+
+                    // Only active posts may be edited — guards against resurrecting a
+                    // trashed/sent post (e.g. deleting the post you're editing then hitting 更新).
+                    const currentStatus = posts[idx].status;
+                    if (currentStatus !== 'pending' && currentStatus !== 'recurring') {
+                        return reject(new Error(`この投稿は編集できません（${currentStatus}）`));
+                    }
+
+                    const updated = {
+                        ...posts[idx],
+                        ...fields,
+                        id: posts[idx].id,
+                        created_at: posts[idx].created_at,
+                        updated_at: new Date().toISOString()
+                    };
+                    // Drop stale error state — this is a fresh attempt
+                    delete updated.error;
+                    delete updated.xError;
+                    delete updated.vrcImageError;
+
+                    // Re-arm the alarm FIRST and only persist once scheduling succeeds, so a
+                    // failed re-schedule never leaves an orphaned post with no alarm.
+                    chrome.runtime.sendMessage({ type: 'CANCEL_POST', payload: { postId: id } }, () => {
+                        chrome.runtime.sendMessage({ type: 'SCHEDULE_POST', payload: { post: updated } }, (schedRes) => {
+                            if (!schedRes?.success) {
+                                return reject(new Error(schedRes?.error || 'Failed to schedule post'));
+                            }
+                            posts[idx] = updated;
+                            chrome.runtime.sendMessage({ type: 'STORAGE_SET', payload: { items: { posts } } }, () => resolve(updated));
+                        });
+                    });
+                });
+            }
             case 'posts:delete':
                 return chrome.runtime.sendMessage({ type: 'STORAGE_GET', payload: { keys: ['posts'] } }, (response) => {
                     const posts = response?.data?.posts || [];
@@ -101,7 +143,9 @@ export const invokeBackend = async (action, payload = {}) => {
                     return reject(new Error('No response from background'));
                 }
                 if (!response.success) {
-                    return reject(new Error(response.error));
+                    const e = new Error(response.error);
+                    if (response.code) e.code = response.code;
+                    return reject(e);
                 }
 
                 // Adapter layer cleanup: Background now returns { groups, needsScan, etc. }

@@ -1,10 +1,17 @@
 import { storage } from './storage.js';
 
 const VRC_API_URL = 'https://vrchat.com/api/1';
-const MIN_REQUEST_INTERVAL = 200; // 500ms minimum between requests
+const MIN_REQUEST_INTERVAL = 200; // 200ms minimum between requests
 
 let lastRequestTime = 0;
 let onRateLimitCallback = null;
+
+// VRChat API の失敗を、UI まで届く .code 付き Error として投げるためのヘルパー
+function apiError(message, code, extra = {}) {
+    const err = new Error(message);
+    err.code = code;
+    return Object.assign(err, extra);
+}
 
 async function apiRequest(endpoint, options = {}) {
     const now = Date.now();
@@ -22,17 +29,30 @@ async function apiRequest(endpoint, options = {}) {
     const baseHeaders = isMultipart ? {} : { 'Content-Type': 'application/json' };
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const res = await fetch(url, {
-            ...options,
-            headers: {
-                ...baseHeaders,
-                ...options.headers,
-            },
-            credentials: 'include',
-        });
+        let res;
+        try {
+            res = await fetch(url, {
+                ...options,
+                headers: {
+                    ...baseHeaders,
+                    ...options.headers,
+                },
+                credentials: 'include',
+            });
+        } catch (networkErr) {
+            // fetch() 自体が reject（オフライン/DNS等）。リトライ上限まではバックオフして再試行
+            if (attempt < maxRetries) {
+                console.warn(`[VRChat API] Network error. Retrying in ${backoff / 1000}s...`, networkErr);
+                await new Promise(resolve => setTimeout(resolve, backoff));
+                backoff = Math.min(backoff * 2, 30000);
+                continue;
+            }
+            console.error('[VRChat API] Network error after max retries.', networkErr);
+            throw apiError('VRChatに接続できません。ネットワーク接続を確認してください。', 'NETWORK');
+        }
 
         if (res.status === 401) {
-            throw new Error('Unauthorized');
+            throw apiError('VRChatのセッションが切れています。再度ログインしてください。', 'AUTH');
         }
 
         if (res.status === 429) {
@@ -44,6 +64,7 @@ async function apiRequest(endpoint, options = {}) {
                 continue;
             }
             console.error('[VRChat API] Rate limited after max retries.');
+            throw apiError('VRChat APIのリクエスト制限に達しました。しばらく待ってから再試行してください。', 'RATE_LIMIT');
         }
 
         if (res.status >= 500 && attempt < maxRetries) {
@@ -55,13 +76,13 @@ async function apiRequest(endpoint, options = {}) {
 
         if (!res.ok && res.status !== 404) {
             const errorData = await res.json().catch(() => ({}));
-            throw new Error(errorData.error?.message || `API Error: ${res.status}`);
+            throw apiError(errorData.error?.message || `VRChat APIエラー (${res.status})`, 'API', { status: res.status });
         }
 
         return res;
     }
 
-    throw new Error('VRChat API request failed after max retries');
+    throw apiError('VRChat APIへのリクエストがリトライ上限に達しました。', 'API');
 }
 
 // --- In-Memory Cache (for roles/group details within a session) ---

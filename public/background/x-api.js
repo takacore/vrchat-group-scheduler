@@ -12,6 +12,8 @@ const X_UPLOAD_BASE = 'https://upload.x.com/i/media/upload.json';
 // "The following features cannot be null: ..." these must be refreshed from the
 // live web bundle: fetch https://abs.twimg.com/responsive-web/client-web/main.*.js
 // and read the module with operationName:"CreateTweet".
+// stale queryId / feature不足は検知して例外メッセージで通知するが、自動更新は
+// しない（最新の client bundle を見て CREATE_TWEET_QUERY_ID と features を手動更新する）。
 // Last synced from X's live client: queryId + 36 featureSwitches + 8 fieldToggles.
 const CREATE_TWEET_QUERY_ID = 'H-t2v_HvFR07ZBP9aOeKoA';
 
@@ -120,6 +122,12 @@ async function xFetch(url, options, csrf) {
     });
     if (!res.ok) {
         const text = await res.text().catch(() => '');
+        if (res.status === 404 && url.includes('/CreateTweet')) {
+            throw new Error(`X API 404: CreateTweet の queryId が古い可能性があります（x-api.js の CREATE_TWEET_QUERY_ID を最新の client bundle から更新してください）: ${text.slice(0, 200)}`);
+        }
+        if (res.status === 400 && text.includes('cannot be null')) {
+            throw new Error(`X API 400: 必要な feature flag が不足しています（features を最新化してください）: ${text.slice(0, 200)}`);
+        }
         throw new Error(`X API ${res.status}: ${text.slice(0, 200)}`);
     }
     return res;
@@ -260,7 +268,15 @@ async function createTweet(text, mediaIds, csrf) {
         body: JSON.stringify({ variables, features, fieldToggles, queryId: CREATE_TWEET_QUERY_ID }),
         headers: { 'content-type': 'application/json' },
     }, csrf);
-    return res.json();
+    const json = await res.json();
+
+    // X は 200 を返しつつ JSON に { errors: [...] } を含むことがある。data が
+    // 無い場合のみ失敗とみなす（正常投稿では data が存在するので誤検知しない）。
+    if (Array.isArray(json.errors) && json.errors.length > 0 && !json.data) {
+        throw new Error('X投稿エラー: ' + (json.errors[0]?.message || 'unknown'));
+    }
+
+    return json;
 }
 
 export const xApi = {

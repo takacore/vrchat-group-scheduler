@@ -14,6 +14,7 @@ export default function Dashboard() {
 
   // UX State
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState(''); // VRChat接続失敗（AUTH以外）
   const [showTrash, setShowTrash] = useState(false);
   const [groupRefreshing, setGroupRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
@@ -30,6 +31,9 @@ export default function Dashboard() {
   const [text, setText] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [notification, setNotification] = useState(false);
+
+  // Edit State
+  const [editingId, setEditingId] = useState(null);
 
   // Recurrence State
   const [isRecurring, setIsRecurring] = useState(false);
@@ -166,7 +170,12 @@ export default function Dashboard() {
       fetchPosts();
     } catch (err) {
       console.error(err);
-      setAuthNeedLogin(true);
+      // AUTH(401)のときだけログイン誘導。NETWORK/RATE_LIMIT等は接続エラーとして扱う
+      if (err.code === 'AUTH') {
+        setAuthNeedLogin(true);
+      } else {
+        setLoadError(err.message || 'VRChatへの接続に失敗しました');
+      }
     } finally {
       setLoading(false);
     }
@@ -180,6 +189,13 @@ export default function Dashboard() {
     });
   };
 
+  // ISO文字列を datetime-local 用の値 'YYYY-MM-DDTHH:mm' へ（ローカル時刻）
+  const toLocalInputValue = (iso) => {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   const fetchGroups = async (userId) => {
     try {
       const result = await invokeBackend('groups:get-all', { userId });
@@ -191,7 +207,11 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error('Failed to fetch groups', err);
-      setError('Failed to fetch groups: ' + err.message);
+      if (err.code === 'AUTH') {
+        setAuthNeedLogin(true);
+        return;
+      }
+      setError('グループの取得に失敗しました: ' + err.message);
     }
   };
 
@@ -332,10 +352,32 @@ export default function Dashboard() {
     }
   };
 
+  // フォームを初期状態へ完全に戻す（作成/更新の成功時・編集キャンセル時に共通利用）
+  const resetForm = () => {
+    setTitle('');
+    setText('');
+    setScheduledAt('');
+    setNotification(false);
+    setIsRecurring(false);
+    setRecurrenceType('daily');
+    setRecurrenceDays([]);
+    setImageDataUrl('');
+    setImageName('');
+    setPostToX(false);
+    setXText('');
+    setEditingId(null);
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!groupId || !title || !text || !scheduledAt) return;
     setError('');
+
+    // 予約時刻は未来でなければならない（過去だと chrome.alarms が即時発火してしまう）
+    if (new Date(scheduledAt).getTime() <= Date.now()) {
+      setError('予約時刻は現在より未来の日時を指定してください');
+      return;
+    }
 
     // Prepare recurrence object
     let recurrence = null;
@@ -354,7 +396,7 @@ export default function Dashboard() {
 
     try {
       const selectedGroup = groups.find(g => g.groupId === groupId);
-      const res = await invokeBackend('posts:create', {
+      const payload = {
         groupId,
         groupName: selectedGroup?.name || groupId,
         title,
@@ -367,20 +409,20 @@ export default function Dashboard() {
         imageName: imageName || null,
         postToX,
         xText: postToX ? (xText || `${title}\n\n${text}`) : null,
-      });
+      };
 
-      if (res) { // res is the new post object
-        setTitle('');
-        setText('');
-        setScheduledAt('');
-        setIsRecurring(false);
-        setRecurrenceDays([]);
-        setImageDataUrl('');
-        setImageName('');
-        setPostToX(false);
-        setXText('');
+      let res;
+      if (editingId) {
+        res = await invokeBackend('posts:update', { id: editingId, ...payload });
+      } else {
+        res = await invokeBackend('posts:create', payload);
+      }
+
+      if (res) { // res is the new/updated post object
+        const wasEditing = !!editingId;
+        resetForm();
         fetchPosts();
-        setToast({ message: '投稿をスケジュールしました！', type: 'success' });
+        setToast({ message: wasEditing ? '投稿を更新しました' : '投稿をスケジュールしました！', type: 'success' });
       }
     } catch (err) {
       setError('Error: ' + err.message);
@@ -397,6 +439,8 @@ export default function Dashboard() {
         setConfirmDialog(null);
         try {
           await invokeBackend('posts:delete', { id, force: isTrash });
+          // 編集中の投稿を削除した場合は編集セッションを終了（ゴミ箱投稿の復活バグ防止）
+          if (id === editingId) resetForm();
           fetchPosts();
           setToast({ message: isTrash ? '投稿を削除しました' : 'ゴミ箱に移動しました', type: 'success' });
         } catch (err) {
@@ -427,7 +471,50 @@ export default function Dashboard() {
     setPostToX(!!post.postToX);
     setXText(post.xText || '');
 
+    setEditingId(null); // Retryは新規作成として扱う
     setError('');
+  };
+
+
+
+  const handleEdit = (post) => {
+    let targetGroupId = post.groupId;
+    const groupExists = groups.some(g => g.groupId === targetGroupId);
+
+    if (!groupExists) {
+      const foundByMemberId = groups.find(g => g.id === targetGroupId);
+      if (foundByMemberId) {
+        targetGroupId = foundByMemberId.groupId;
+      }
+    }
+
+    if (!groups.some(g => g.groupId === targetGroupId)) {
+      setToast({ message: '元のグループが見つかりません。グループを選び直してください', type: 'error' });
+    }
+    setGroupId(targetGroupId);
+    setTitle(post.title);
+    setText(post.text);
+    setNotification(post.sendNotification || false);
+    setScheduledAt(toLocalInputValue(post.scheduledAt));
+    setImageDataUrl(post.imageDataUrl || '');
+    setImageName(post.imageName || '');
+    setPostToX(!!post.postToX);
+    setXText(post.xText || '');
+
+    // Handle Recurrence
+    if (post.recurrence) {
+      setIsRecurring(true);
+      setRecurrenceType(post.recurrence.type);
+      setRecurrenceDays(post.recurrence.days || []);
+    } else {
+      setIsRecurring(false);
+      setRecurrenceDays([]);
+    }
+
+    setEditingId(post.id);
+    setError('');
+    // Scroll to top to see form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
 
@@ -468,6 +555,7 @@ export default function Dashboard() {
       // Should have recurrence obj if status is recurring, but just in case
     }
 
+    setEditingId(null); // Cloneは新規作成として扱う
     setError('');
     // Scroll to top to see form
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -502,6 +590,22 @@ export default function Dashboard() {
         onClick={() => window.location.reload()}
       >
         ログイン後に再読み込み
+      </button>
+    </div>
+  );
+  if (loadError) return (
+    <div className={styles.container} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center' }}>
+      <h2 style={{ color: 'var(--text)', marginBottom: '1rem' }}>VRChatへの接続に失敗しました</h2>
+      <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>
+        {loadError}<br />
+        ネットワーク状況を確認し、時間をおいて再度お試しください。
+      </p>
+      <button
+        className={styles.button}
+        style={{ padding: '0.8rem 2rem', fontSize: '1.1rem', width: 'auto' }}
+        onClick={() => window.location.reload()}
+      >
+        再読み込み
       </button>
     </div>
   );
@@ -712,7 +816,7 @@ export default function Dashboard() {
 
         <div className={styles.grid}>
           <section className={styles.card}>
-            <h2 className={styles.cardTitle}>New Scheduled Post</h2>
+            <h2 className={styles.cardTitle}>{editingId ? '予約投稿を編集' : 'New Scheduled Post'}</h2>
             <form onSubmit={handleCreate}>
               <div className={styles.formGroup}>
                 <label className={styles.label}>Group</label>
@@ -942,7 +1046,27 @@ export default function Dashboard() {
                 )}
               </div>
 
-              <button type="submit" className={styles.button}>Schedule Post</button>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button type="submit" className={styles.button} style={{ flex: 1 }}>
+                  {editingId ? '更新する' : 'Schedule Post'}
+                </button>
+                {editingId && (
+                  <button
+                    type="button"
+                    className={styles.button}
+                    style={{
+                      flex: '0 0 auto',
+                      width: 'auto',
+                      background: 'transparent',
+                      color: 'var(--text-muted)',
+                      border: '1px solid var(--border)',
+                    }}
+                    onClick={() => { resetForm(); setError(''); }}
+                  >
+                    キャンセル
+                  </button>
+                )}
+              </div>
             </form>
           </section>
 
@@ -1008,6 +1132,17 @@ export default function Dashboard() {
                     <span className={`${styles.status} ${styles['status' + (post.status.charAt(0).toUpperCase() + post.status.slice(1))]}`}>
                       {post.status}
                     </span>
+
+                    {!showTrash && (post.status === 'pending' || post.status === 'recurring') && (
+                      <button
+                        className={styles.retryBtn}
+                        style={{ marginRight: '0.5rem' }}
+                        onClick={() => handleEdit(post)}
+                        title="編集"
+                      >
+                        ✎
+                      </button>
+                    )}
 
                     <button
                       className={styles.retryBtn}
