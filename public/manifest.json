@@ -12,7 +12,6 @@
         "declarativeNetRequestWithHostAccess"
     ],
     "host_permissions": [
-        "https://api.vrchat.cloud/*",
         "https://vrchat.com/*",
         "https://api.x.com/*",
         "https://x.com/*",

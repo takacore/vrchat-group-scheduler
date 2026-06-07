@@ -2,7 +2,7 @@
 import { api } from './api.js';
 import { storage } from './storage.js';
 import { scheduler } from './scheduler.js';
-import { xApi } from './x-api.js';
+import { xApi, clearXHeaderRule } from './x-api.js';
 
 async function dataUrlToBlob(dataUrl) {
     const res = await fetch(dataUrl);
@@ -12,12 +12,21 @@ async function dataUrlToBlob(dataUrl) {
 chrome.runtime.onInstalled.addListener(() => {
     console.log('VRChat Group Scheduler Extension Installed');
 
+    // 前回セッションで残った可能性のあるX用ヘッダルールを掃除
+    clearXHeaderRule();
+
     // Initialize storage if empty
     storage.get(['posts']).then(result => {
         if (!result.posts) {
             storage.set({ posts: [] });
         }
     });
+});
+
+// 起動時にも残留 session rule を必ず除去（古いCookieスナップショットでX宛XHRを
+// 上書きし続けるのを防ぐ。MV3 session rule は SW ライフサイクルと独立に残るため）
+chrome.runtime.onStartup.addListener(() => {
+    clearXHeaderRule();
 });
 
 // Alarm Listener

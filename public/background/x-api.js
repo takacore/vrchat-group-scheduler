@@ -75,7 +75,9 @@ async function installHeaderRule() {
                 ],
             },
             condition: {
-                requestDomains: ['api.x.com', 'upload.x.com', 'x.com'],
+                // 実際に叩くのは api.x.com / upload.x.com のみ。bare 'x.com' を外し、
+                // 並行する正規 x.com タブのXHRをヘッダ上書きで巻き込む範囲を減らす。
+                requestDomains: ['api.x.com', 'upload.x.com'],
                 resourceTypes: ['xmlhttprequest'],
             },
         }],
@@ -88,6 +90,12 @@ async function uninstallHeaderRule() {
     } catch (e) {
         console.warn('Failed to remove X header rule:', e);
     }
+}
+
+// MV3 の session rule は SW が finally 到達前に停止(タイムアウト/クラッシュ/リロード)すると
+// 残存し得る。起動/インストール時に確実に掃除するため、background から呼べるよう公開する。
+export async function clearXHeaderRule() {
+    await uninstallHeaderRule();
 }
 
 async function withXHeaders(fn) {
