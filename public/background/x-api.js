@@ -6,12 +6,10 @@
 // refreshed at runtime from X's public bundle (fetchXConfig), with baked-in
 // fallbacks, because X rotates them periodically.
 
-// Public web bearer of X's web client. NOT a secret (it's shipped in X's public
-// JS to every visitor), but X can rotate it — so we also read the live value
-// from the bundle at runtime (fetchXConfig) and only fall back to this constant.
-const X_BEARER_FALLBACK = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
-// The bearer actually used for requests; refreshed by fetchXConfig() per post.
-let activeBearer = X_BEARER_FALLBACK;
+// The web bearer is NOT hard-coded. It is read at runtime from X's public client
+// bundle (fetchXConfig) right before posting. If it can't be obtained we refuse
+// to post and surface a clear error rather than embedding a token in source.
+let activeBearer = null;
 const X_API_BASE = 'https://api.x.com';
 const X_UPLOAD_BASE = 'https://upload.x.com/i/media/upload.json';
 // X rotates the CreateTweet GraphQL operation periodically. Crucially, the
@@ -85,8 +83,9 @@ const CREATE_TWEET_FIELD_TOGGLE_NAMES = [
 const X_ASSET_HOST = 'https://abs.twimg.com';
 
 // Runtime cache for the dynamically-resolved client config
-// ({ bearer, queryId, featureNames, fieldToggleNames }). Any field may be null;
-// callers fall back per-field to the baked-in constants.
+// ({ bearer, queryId, featureNames, fieldToggleNames }). The bearer is REQUIRED
+// (no hard-coded fallback); queryId/feature flags fall back to baked-in non-secret
+// constants only as resilience.
 let cachedConfig = null;
 let cachedConfigAt = 0;
 const CONFIG_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -95,12 +94,13 @@ function parseStringArray(s) {
     return s ? [...s.matchAll(/"([^"]+)"/g)].map(m => m[1]) : [];
 }
 
-// Best-effort: read X's live client config from its public JS bundle so we keep
-// working when X rotates the bearer / CreateTweet queryId / required feature
-// flags. Returns whatever it found ({} if nothing). Never throws — but it does
-// NOT mask request failures: the actual post path surfaces those separately.
+// Read X's live client config (bearer + CreateTweet op) from its public JS
+// bundle. The bearer is never hard-coded — it is obtained here at runtime.
+// Returns whatever it found ({} if nothing); the caller treats a missing bearer
+// as a hard error. We only cache once the bearer is present so a transient
+// failure doesn't poison the cache for the whole TTL.
 async function fetchXConfig() {
-    if (cachedConfig && (Date.now() - cachedConfigAt) < CONFIG_TTL_MS) {
+    if (cachedConfig?.bearer && (Date.now() - cachedConfigAt) < CONFIG_TTL_MS) {
         return cachedConfig;
     }
     const out = {};
@@ -150,17 +150,21 @@ async function fetchXConfig() {
             }
         }
     } catch (e) {
-        console.warn('[X] live config refresh failed (will use baked-in fallbacks):', e?.message || e);
+        console.warn('[X] live config fetch failed:', e?.message || e);
     }
 
-    cachedConfig = out;
-    cachedConfigAt = Date.now();
+    // Only cache a result that has the (required) bearer; otherwise let the next
+    // post retry instead of being stuck on an empty config for the whole TTL.
+    if (out.bearer) {
+        cachedConfig = out;
+        cachedConfigAt = Date.now();
+    }
     console.log('[X] config resolved', {
-        bearer: out.bearer ? (out.bearer === X_BEARER_FALLBACK ? 'live=baked' : 'live') : 'baked-in',
-        queryId: out.queryId ? (out.queryId === CREATE_TWEET_QUERY_ID ? 'live=baked' : 'live') : 'baked-in',
+        bearer: out.bearer ? 'live' : 'MISSING',
+        queryId: out.queryId ? 'live' : 'baked-in',
         featureCount: out.featureNames?.length ?? CREATE_TWEET_FEATURE_NAMES.length,
     });
-    return cachedConfig;
+    return out;
 }
 
 async function getCsrfToken() {
@@ -257,8 +261,8 @@ async function withXHeaders(fn) {
 
 function baseHeaders(csrf) {
     return {
-        // activeBearer is refreshed from the live bundle per post (fetchXConfig),
-        // falling back to X_BEARER_FALLBACK.
+        // activeBearer is read from X's live bundle per post (fetchXConfig).
+        // post() guarantees it is set before any request reaches here.
         'authorization': `Bearer ${activeBearer}`,
         'x-csrf-token': csrf,
         'x-twitter-auth-type': 'OAuth2Session',
@@ -427,9 +431,13 @@ export const xApi = {
 
         // Resolve live client config (bearer + CreateTweet op) BEFORE installing
         // the header rule / uploading media, so the bearer is ready for every
-        // request in this post. Best-effort: missing fields fall back to baked-in.
+        // request in this post. The bearer is mandatory and never hard-coded: if
+        // we can't read it from X's bundle, refuse to post with a clear error.
         const cfg = await fetchXConfig();
-        activeBearer = cfg?.bearer || X_BEARER_FALLBACK;
+        if (!cfg.bearer) {
+            throw new Error('X の認証トークン(bearer)を取得できませんでした。x.com に接続できるか、ログイン状態を確認してください。');
+        }
+        activeBearer = cfg.bearer;
 
         return withXHeaders(async () => {
             const mediaIds = [];
