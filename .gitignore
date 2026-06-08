@@ -36,3 +36,7 @@ data/
 posts.json
 auth.json
 *.db
+
+# Build / release artifacts (do not commit)
+*.crx
+vrchat-group-notify-scheduler-*.zip

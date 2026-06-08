@@ -1,147 +1,85 @@
-# VRChat Group Notify Scheduler
+# VRChat Group Notify Scheduler (Chrome 拡張機能 / MV3)
 
-A secure, local Electron application for scheduling VRChat group announcements.
-VRChatのグループお知らせ投稿を予約管理するための、セキュアなローカルElectronアプリケーションです。
+VRChatのグループお知らせ（Announcement）を予約投稿するための **Chrome 拡張機能（Manifest V3）** です。
+お好みで、同じ内容を **X(Twitter) へ同時投稿**したり、投稿に**画像を添付**することもできます。
 
-使い方動画
+> 旧バージョンは Electron デスクトップアプリでしたが、現在は Chrome 拡張機能に移行しています。本READMEは現行のMV3拡張の挙動を説明します。
+
+使い方動画（旧UIの参考）:
 https://drive.google.com/file/d/19oLJXNCheJwVyDH7iHtjL9J8E4tvRUyE/preview
 
 ---
 
+## 概要
 
-## 🇯🇵 日本語
+ブラウザにログイン済みの **VRChat のセッション（Cookie）を利用**して、指定した日時にグループお知らせを自動投稿します。
+サーバーを介さず、あなたのブラウザ上（拡張機能のバックグラウンド）で動作します。
 
-### 概要
-VRChat Group Notify Scheduler は、VRChatのグループお知らせ（Announcement）を予約投稿するためのデスクトップアプリケーションです。
-ローカルPC上で動作し、大切なアカウント情報や予約データを外部サーバーに送信することなく安全に管理できます。
+## 主な機能
 
-### 機能
-- **セキュアな認証**: VRChatの2段階認証（2FA）ログインに対応。認証情報はOS標準の機能を用いて暗号化されます。
-- **予約投稿**: 日時を指定してお知らせを予約できます。指定時刻になると自動で投稿されます（アプリ起動が必要）。
-- **ローカル保存**: 全てのデータはPC内のユーザーデータフォルダに保存されます。
-- **グループ管理**: 参加しているグループを自動取得し、投稿権限のあるグループを識別します。
-- **安全性**: 外部サーバーやDBは一切不使用。データはあなたのPC内でのみ完結します。
+- **予約投稿**: 日時を指定してお知らせを予約。`chrome.alarms` により指定時刻に自動投稿します。
+- **定期投稿**: 毎日 / 毎週（曜日指定） / 毎月の繰り返しに対応。発火後に次回を自動で再スケジュールします。
+- **画像添付（任意）**: VRChat の画像付き投稿に対応（後述の制限あり）。
+- **X(Twitter) 同時投稿（任意）**: テキスト／画像を X にも投稿。X 側のログインセッションを利用します。
+- **バックアップ / 復元**: 予約投稿を JSON にエクスポート／インポート。更新時や別PCへの移行でデータを引き継げます。
+- **グループ権限スキャン**: 参加グループのうち、お知らせ投稿権限のあるグループを抽出（結果はキャッシュ）。
 
-### VRChat APIの利用と規約準拠について
-本アプリケーションは、VRChatの利用規約（Terms of Service）およびコミュニティガイドラインに違反しないよう、慎重に設計されています。
-https://hello.vrchat.com/creator-guidelines
+## 認証とデータの取り扱い（重要・正確な仕様）
 
+正直なところを明記します。旧Electron版の「OSキーチェーンで暗号化」「データは一切外部に出ない」といった説明は、**この拡張機能には当てはまりません**。
 
-- **Community APIの利用**: VRChatが公開しているクライアント向けAPI（通称: Community API）を利用して、正規のクライアントと同様の手順で投稿を行います。
-https://vrchat.community/reference/add-group-post
+- **認証はブラウザのログインセッションに依存**します。拡張機能はパスワードを受け取らず保存もしません。VRChat / X に**ブラウザでログイン済み**であることが前提で、リクエスト時に該当ドメインの Cookie を読み取って使用します。
+- **予約データの保存先は `chrome.storage.local`（平文）** です。OSキーチェーン等による暗号化は行っていません。添付画像は base64 として同ストレージに保存されます（このため `unlimitedStorage` 権限を使用）。
+- **「外部に出ない」わけではありません**: 本来の目的どおり、投稿内容は **VRChat API（`vrchat.com`）** へ送信されます。X 同時投稿を有効にした場合は **X（`api.x.com` / `upload.x.com`）** にも送信されます。これら以外の第三者サーバーへの送信・テレメトリは行いません。
+- **X 連携の仕組み**: X の Web クライアントが使う bearer / GraphQL の `CreateTweet` 定義を、X の公開バンドル（`abs.twimg.com`）から実行時に読み取り、あなたの X セッション Cookie で投稿します。bearer 等をソースに直書きはしていません。
+- Cookie やトークンを**ログ出力・外部送信することはありません**。
 
-- **完全ローカル動作**: 一般的なBotサービスとは異なり、**あなたのPC上でローカルに動作**します。これにより、「第三者（サーバー運営者）へのアカウント情報の共有」を回避し、安全に自動化機能を利用できます。
-- **クレデンシャルの保護**: パスワードやトークンは外部に送信されず、あなたのPC内に暗号化されて保存されます。
+### 通信先（host_permissions）
+`vrchat.com` / `api.x.com` / `x.com` / `upload.x.com` / `abs.twimg.com` のみ。
 
-### セキュリティについて
-- **トークン暗号化**: ログイン情報は Electron `safeStorage` APIにより暗号化されます。万が一ファイルが流出しても、他のPCでは復号できません。
-- **Git管理**: 安全のため、`data/` ディレクトリ（認証情報や投稿データ）は `.gitignore` で除外されています。
+### 使用権限（manifest）
+`storage`, `unlimitedStorage`, `alarms`, `cookies`, `notifications`, `declarativeNetRequestWithHostAccess`。
+`declarativeNetRequestWithHostAccess` は、拡張機能のバックグラウンドから X API へ投稿する際に、SameSite=Lax の Cookie を送るためのヘッダ注入に使用します（注入対象は `api.x.com` / `upload.x.com` のみ、処理中のみ有効化し直後に解除）。
 
-### インストール・起動 (開発用)
-1. リポジトリをクローンします。
-   ```bash
-   git clone https://github.com/TakaAizu/vrchat-group-notify-scheduler.git
-   cd vrchat-group-notify-scheduler
-   ```
-2. ライブラリをインストールします。
-   ```bash
-   npm install
-   ```
-3. 開発モードで起動します。
-   ```bash
-   npm run dev
-   ```
+## 制限・注意
 
-### ビルド (配布用)
-配布用の実行ファイルを作成するには以下のコマンドを実行します。
+- **画像添付（VRChat側）には VRC+ サブスクライブが必要**です（`/file/image` の権限要件）。未加入の場合は画像なしで投稿を継続します（X 同時投稿の画像には影響しません）。VRChat 側は概ね 512×512px 以上を推奨。
+- **X 同時投稿には X(Twitter) へのブラウザログインが必要**です。
+- X は `CreateTweet` の queryId / feature flags を随時更新します。本拡張は実行時に追従しますが、X 側の大きな仕様変更時は一時的に投稿できなくなる可能性があります。
 
-- **Windows用 (x64 / ポータブル版)**:
-  ```bash
-  npm run build:win
-  ```
-  出力先: `dist/VRChat Group Scheduler X.X.X.exe`
-  ※インストール不要でそのまま動くExeファイルが生成されます。
+## VRChat 利用規約への配慮
+VRChat の利用規約・ガイドラインに反しないよう、正規クライアントと同様の手順（Cookie セッション）でローカルに動作する設計です。
+- https://hello.vrchat.com/creator-guidelines
+- https://vrchat.community/reference/add-group-post
 
-- **macOS用 (.dmg)**:
-  ```bash
-  npm run build:mac
-  ```
-  出力先: `dist/VRChat Group Scheduler-X.X.X.dmg`
+## インストール（パッケージ化されていない拡張機能として読み込み）
 
-### 技術スタック
-- Electron
-- Next.js (Nextron)
-- Node Schedule
-
-### 作者
-**TakaAizu**
-https://x.com/TakaAizu
-
---
-
-## 🇺🇸 English
-
-### Overview
-VRChat Group Notify Scheduler is a desktop application designed to help Group Owners and Moderators schedule announcements in advance. It runs locally on your machine, ensuring that your tokens and data remains in your control.
-
-### Features
-- **Secure Authentication**: Supports VRChat 2FA login. Credentials are encrypted using OS-native keychains (Electron `safeStorage`).
-- **Schedule Posts**: Create, edit, and schedule group announcements for future dates.
-- **Local Data Persistence**: All data (posts, sessions) is stored locally in your OS's user data directory.
-- **Group Management**: Automatically fetches joined groups and identifies groups where you have permission to post.
-- **Safety**: No external database or server. Your data never leaves your machine.
-
-### VRChat API & ToS Compliance (Important)
-This application is designed with strict adherence to VRChat's Terms of Service.
-https://hello.vrchat.com/creator-guidelines
-
-
-- **Community API**: It uses the standard VRChat Client API (HTTP) to perform actions on your behalf.
-https://vrchat.community/reference/add-group-post
-
-
-- **Local Execution**: Unlike cloud-based scheduling bots, this app runs **locally on your device**. This allows you to use automation tools without sharing your credentials with third-party servers, ensuring compliance with account security policies.
-- **Encrypted Storage**: Your credentials are encrypted and stored only on your device.
-
-### Security
-- **Token Encryption**: Login cookies are encrypted using your OS account's credentials. They cannot be decrypted on other machines.
-- **Git Friendly**: `.gitignore` is configured to exclude all sensitive data (`data/` directory).
-
-### Installation (Development)
-1. Clone the repository.
-   ```bash
-   git clone https://github.com/TakaAizu/vrchat-group-notify-scheduler.git
-   cd vrchat-group-notify-scheduler
-   ```
-2. Install dependencies.
+1. このリポジトリを取得し、依存をインストールします。
    ```bash
    npm install
    ```
-3. Run in development mode.
+2. 拡張機能をビルドします（`next build` 後に `fix-extension.js` が `out/_next` を `out/assets` にリネームし、相対パスへ置換します）。
    ```bash
-   npm run dev
+   npm run build
    ```
+   生成物: `out/`
+3. Chrome で `chrome://extensions/` を開き、**デベロッパーモード**を ON。
+4. 「**パッケージ化されていない拡張機能を読み込む**」で `out/` フォルダを選択。
+5. 権限の確認ダイアログが出たら承認します。
 
-### Build (Release)
-To create an executable for your platform:
+> 更新時のデータ引き継ぎ: 「パッケージ化されていない拡張機能」の保存領域は読み込み元のIDに紐づきます。**同じフォルダに上書きして「更新」**すればデータは保持されます。フォルダを変える/別PCに移す場合は、拡張機能内の **Backup / Restore** をご利用ください。
 
-- **Windows (x64 / Portable)**:
-  ```bash
-  npm run build:win
-  ```
-  Output: `dist/VRChat Group Scheduler X.X.X.exe`
+## 開発
 
-- **macOS (.dmg)**:
-  ```bash
-  npm run build:mac
-  ```
-  Output: `dist/VRChat Group Scheduler-X.X.X.dmg`
+```bash
+npm run dev   # Next.js 開発サーバ（UIの見た目確認用。chrome.* API はモックされません）
+```
 
-### Tech Stack
-- Electron
-- Next.js (Nextron)
-- Node Schedule
+## 技術スタック
 
-### Author
-**TakaAizu**
-https://x.com/TakaAizu
+- Chrome 拡張機能（Manifest V3, Service Worker）
+- Next.js（静的エクスポート → ポップアップ/全画面UI）
+- `chrome.alarms` によるスケジューリング
+
+## 作者
+**TakaAizu** — https://x.com/TakaAizu
