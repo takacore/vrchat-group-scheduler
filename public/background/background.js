@@ -65,14 +65,18 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         let xResultOk = true;
         let xError = null;
         if (post.postToX) {
+            console.log('[Scheduler] post.postToX=true, attempting X post...');
             try {
                 const xText = post.xText || `${post.title}\n\n${post.text}`;
                 await xApi.post(xText, post.imageDataUrl || null);
+                console.log('[Scheduler] X post completed');
             } catch (xErr) {
                 xResultOk = false;
                 xError = xErr.message;
-                console.error('X(Twitter) post failed:', xErr);
+                console.error('[Scheduler] X(Twitter) post failed:', xErr);
             }
+        } else {
+            console.log('[Scheduler] post.postToX falsy, skipping X');
         }
 
         const fullySuccess = xResultOk && !vrcImageError;

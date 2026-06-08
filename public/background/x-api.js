@@ -9,11 +9,63 @@ const X_API_BASE = 'https://api.x.com';
 const X_UPLOAD_BASE = 'https://upload.x.com/i/media/upload.json';
 // NOTE: X rotates the CreateTweet GraphQL queryId and its required feature
 // flags periodically. When posting suddenly returns 404 (stale queryId) or 400
-// "The following features cannot be null: ..." these must be refreshed from the
-// live web bundle: fetch https://abs.twimg.com/responsive-web/client-web/main.*.js
-// and read the module with operationName:"CreateTweet".
+// "The following features cannot be null: ..." the hard-coded values below must
+// be refreshed from the live web bundle.
+// To survive rotation without an extension release, we ALSO refresh the queryId
+// at runtime from X's live client bundle (see fetchCreateTweetQueryId). The
+// hard-coded value is the verified-working fallback used when x.com is
+// unreachable or the bundle layout changes.
 // Last synced from X's live client: queryId + 36 featureSwitches + 8 fieldToggles.
 const CREATE_TWEET_QUERY_ID = 'H-t2v_HvFR07ZBP9aOeKoA';
+
+// X serves its web client JS from this static CDN. We GET (no credentials, no
+// cookie injection) the bundle only to read the current CreateTweet queryId.
+const X_ASSET_HOST = 'https://abs.twimg.com';
+
+// Runtime cache for the dynamically-resolved queryId.
+let cachedQueryId = null;
+let cachedQueryIdAt = 0;
+const QUERY_ID_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+// Best-effort: read the live CreateTweet queryId from X's client bundle so we
+// keep working when X rotates it. Falls back to the verified hard-coded value.
+async function fetchCreateTweetQueryId() {
+    if (cachedQueryId && (Date.now() - cachedQueryIdAt) < QUERY_ID_TTL_MS) {
+        return cachedQueryId;
+    }
+    try {
+        const homeRes = await fetch('https://x.com/home', { credentials: 'omit' });
+        const html = await homeRes.text();
+        const scriptUrls = [...html.matchAll(/src=["']([^"']+\.js[^"']*)["']/g)]
+            .map(m => m[1])
+            .map(u => { try { return new URL(u, 'https://x.com').href; } catch { return null; } })
+            .filter(Boolean)
+            // Only scan X's own static asset host — never third-party scripts.
+            .filter(u => u.startsWith(X_ASSET_HOST + '/'));
+
+        for (const url of scriptUrls) {
+            try {
+                const r = await fetch(url, { credentials: 'omit' });
+                const t = await r.text();
+                const idx = t.indexOf('"CreateTweet"');
+                if (idx === -1) continue;
+                const around = t.slice(Math.max(0, idx - 600), idx + 200);
+                const m = around.match(/queryId:\s*["']([A-Za-z0-9_-]+)["']/);
+                if (m) {
+                    cachedQueryId = m[1];
+                    cachedQueryIdAt = Date.now();
+                    if (m[1] !== CREATE_TWEET_QUERY_ID) {
+                        console.log('[X] CreateTweet queryId refreshed from live bundle (differs from baked-in)');
+                    }
+                    return m[1];
+                }
+            } catch { /* try next bundle */ }
+        }
+    } catch (e) {
+        console.warn('[X] queryId live refresh failed, using baked-in fallback:', e?.message || e);
+    }
+    return cachedQueryId || CREATE_TWEET_QUERY_ID;
+}
 
 async function getCsrfToken() {
     return new Promise((resolve, reject) => {
@@ -176,6 +228,10 @@ async function uploadMediaChunked(blob, mimeType, csrf) {
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
     }, csrf);
     const finalizeData = await finalizeRes.json();
+    if (finalizeData.errors?.length) {
+        const e = finalizeData.errors[0];
+        throw new Error(`X media FINALIZE失敗: ${e.message || JSON.stringify(e)}`);
+    }
 
     // STATUS polling if processing
     if (finalizeData.processing_info) {
@@ -262,13 +318,29 @@ async function createTweet(text, mediaIds, csrf) {
         withAuxiliaryUserLabels: false,
     };
 
-    const url = `${X_API_BASE}/graphql/${CREATE_TWEET_QUERY_ID}/CreateTweet`;
+    const queryId = await fetchCreateTweetQueryId();
+    const url = `${X_API_BASE}/graphql/${queryId}/CreateTweet`;
+    console.log('[X] CreateTweet POST', { queryIdPrefix: queryId.slice(0, 6) + '...', textLen: text?.length, mediaCount: (mediaIds || []).length });
     const res = await xFetch(url, {
         method: 'POST',
-        body: JSON.stringify({ variables, features, fieldToggles, queryId: CREATE_TWEET_QUERY_ID }),
+        body: JSON.stringify({ variables, features, fieldToggles, queryId }),
         headers: { 'content-type': 'application/json' },
     }, csrf);
-    return res.json();
+    const data = await res.json();
+    // X returns HTTP 200 even when the operation fails — the failure is reported
+    // in body.errors[]. Surface it as a thrown error so callers don't treat a
+    // failed post as success (the cause of the "silent X skip" symptom).
+    if (data.errors?.length) {
+        const e = data.errors[0];
+        console.error('[X] CreateTweet returned errors:', data.errors);
+        throw new Error(`X CreateTweet失敗 (code ${e.code ?? 'n/a'}): ${e.message || JSON.stringify(e)}`);
+    }
+    if (!data.data?.create_tweet) {
+        console.error('[X] CreateTweet unexpected response shape:', data);
+        throw new Error('X CreateTweet失敗: 予期しないレスポンス形式');
+    }
+    console.log('[X] CreateTweet success');
+    return data;
 }
 
 export const xApi = {
@@ -283,6 +355,7 @@ export const xApi = {
     },
 
     async post(text, imageDataUrl = null) {
+        console.log('[X] xApi.post called', { textLen: text?.length, hasImage: !!imageDataUrl });
         const csrf = await getCsrfToken();
         await getAuthToken();
 
@@ -292,7 +365,9 @@ export const xApi = {
                 const fetchRes = await fetch(imageDataUrl);
                 const blob = await fetchRes.blob();
                 const mimeType = blob.type || 'image/png';
+                console.log('[X] uploading media', { size: blob.size, mimeType });
                 const mediaId = await uploadMediaChunked(blob, mimeType, csrf);
+                console.log('[X] media uploaded', { mediaId });
                 mediaIds.push(mediaId);
             }
 

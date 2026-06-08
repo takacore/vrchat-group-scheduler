@@ -15,7 +15,8 @@
         "https://vrchat.com/*",
         "https://api.x.com/*",
         "https://x.com/*",
-        "https://upload.x.com/*"
+        "https://upload.x.com/*",
+        "https://abs.twimg.com/*"
     ],
     "background": {
         "service_worker": "background/background.js",
