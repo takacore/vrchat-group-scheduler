@@ -71,6 +71,15 @@ export const invokeBackend = async (action, payload = {}) => {
             case 'app:get-version':
                 return resolve(chrome.runtime.getManifest().version);
 
+            case 'posts:import':
+                return chrome.runtime.sendMessage({ type: 'IMPORT_POSTS', payload: { posts: payload.posts || [] } }, (response) => {
+                    if (response?.success) {
+                        resolve(response.data);
+                    } else {
+                        reject(new Error(response?.error || 'Failed to import posts'));
+                    }
+                });
+
             case 'x:check-login':
                 type = 'API_CALL';
                 payload = { action: 'xCheckLogin' };

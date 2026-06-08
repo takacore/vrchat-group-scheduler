@@ -299,6 +299,72 @@ export default function Dashboard() {
     }
   };
 
+  // --- Backup / Restore (carry posts across updates & between machines) ---
+  const handleExportPosts = async () => {
+    try {
+      const all = await invokeBackend('posts:get-all'); // full array incl. trash
+      const payload = {
+        app: 'vrchat-group-notify-scheduler',
+        type: 'posts-backup',
+        version: appVersion || '',
+        exportedAt: new Date().toISOString(),
+        posts: all || [],
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+      a.href = url;
+      a.download = `vgs-posts-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setToast({ message: `${(all || []).length}件の投稿をエクスポートしました`, type: 'success' });
+    } catch (err) {
+      setError('エクスポートに失敗しました: ' + err.message);
+    }
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting same file
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(reader.result);
+      } catch {
+        setError('インポート失敗: JSONとして読み込めません');
+        return;
+      }
+      const incoming = Array.isArray(parsed) ? parsed : parsed?.posts;
+      if (!Array.isArray(incoming)) {
+        setError('インポート失敗: 投稿データ(posts配列)が見つかりません');
+        return;
+      }
+      setConfirmDialog({
+        message: `${incoming.length}件の投稿を取り込みます。同じIDの投稿は上書き、それ以外は追加されます。よろしいですか？`,
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          try {
+            const res = await invokeBackend('posts:import', { posts: incoming });
+            await fetchPosts();
+            setToast({
+              message: `取り込み完了（新規${res?.added ?? 0} / 更新${res?.updated ?? 0} / 再予約${res?.rescheduled ?? 0}）`,
+              type: 'success',
+            });
+          } catch (err) {
+            setError('インポートに失敗しました: ' + err.message);
+          }
+        },
+      });
+    };
+    reader.onerror = () => setError('ファイルの読み込みに失敗しました');
+    reader.readAsText(file);
+  };
+
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) {
@@ -951,10 +1017,31 @@ export default function Dashboard() {
               <h2 className={styles.cardTitle} style={{ marginBottom: 0 }}>
                 {showTrash ? 'Trash Can' : 'Scheduled Queue'}
               </h2>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button
                   className={styles.retryBtn}
-                  style={{ fontSize: '0.85rem', color: 'var(--accent-hover)', marginRight: '0.75rem' }}
+                  style={{ fontSize: '0.85rem', color: 'var(--accent-hover)' }}
+                  onClick={handleExportPosts}
+                  title="すべての予約投稿をJSONファイルに書き出します（バックアップ）"
+                >⬇ Backup</button>
+
+                <button
+                  className={styles.retryBtn}
+                  style={{ fontSize: '0.85rem', color: 'var(--accent-hover)' }}
+                  onClick={() => document.getElementById('vgs-import-input')?.click()}
+                  title="バックアップしたJSONから予約投稿を復元します"
+                >⬆ Restore</button>
+                <input
+                  id="vgs-import-input"
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: 'none' }}
+                  onChange={handleImportFile}
+                />
+
+                <button
+                  className={styles.retryBtn}
+                  style={{ fontSize: '0.85rem', color: 'var(--accent-hover)' }}
                   onClick={fetchPosts}
                 >Refresh</button>
 

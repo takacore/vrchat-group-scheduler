@@ -136,6 +136,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             } else if (request.type === 'STORAGE_SET') {
                 await storage.set(request.payload.items);
                 sendResponse({ success: true });
+            } else if (request.type === 'IMPORT_POSTS') {
+                const result = await importPosts(request.payload.posts || []);
+                sendResponse({ success: true, data: result });
             } else {
                 throw new Error(`Unknown message type: ${request.type}`);
             }
@@ -147,6 +150,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     return true; // Keep message channel open for async response
 });
+
+// Restore a backup: merge incoming posts into storage by id (incoming wins) and
+// re-arm alarms for any future pending/recurring posts so schedules survive an
+// update / machine migration where the previous alarms were lost.
+async function importPosts(incoming) {
+    if (!Array.isArray(incoming)) throw new Error('インポートデータが配列ではありません');
+
+    const { posts: existing = [] } = await storage.get(['posts']);
+    const byId = new Map((existing || []).map(p => [p.id, p]));
+
+    let added = 0;
+    let updated = 0;
+    for (const p of incoming) {
+        if (!p || !p.id) continue;
+        if (byId.has(p.id)) updated++; else added++;
+        byId.set(p.id, p);
+    }
+    const merged = [...byId.values()];
+    await storage.set({ posts: merged });
+
+    // Re-arm alarms for future-dated active posts.
+    const now = Date.now();
+    let rescheduled = 0;
+    for (const p of merged) {
+        if ((p.status === 'pending' || p.status === 'recurring') && p.scheduledAt) {
+            const ts = new Date(p.scheduledAt).getTime();
+            if (!Number.isNaN(ts) && ts > now) {
+                await scheduler.addJob(p.id, ts);
+                rescheduled++;
+            }
+        }
+    }
+    return { total: merged.length, added, updated, rescheduled };
+}
 
 async function handleApiCall({ action, params }) {
     switch (action) {
