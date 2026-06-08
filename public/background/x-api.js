@@ -1,10 +1,17 @@
 // background/x-api.js
 // X(Twitter) posting via browser cookie session.
-// Uses the public web bearer token + ct0 (CSRF) cookie from x.com,
-// then chunk-uploads media to upload.twitter.com and creates a tweet
-// via the GraphQL CreateTweet endpoint.
+// Uses the web bearer + ct0 (CSRF) cookie from x.com, chunk-uploads media to
+// upload.x.com, and creates a tweet via the GraphQL CreateTweet endpoint.
+// The bearer and the CreateTweet operation (queryId + feature/field flags) are
+// refreshed at runtime from X's public bundle (fetchXConfig), with baked-in
+// fallbacks, because X rotates them periodically.
 
-const X_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
+// Public web bearer of X's web client. NOT a secret (it's shipped in X's public
+// JS to every visitor), but X can rotate it — so we also read the live value
+// from the bundle at runtime (fetchXConfig) and only fall back to this constant.
+const X_BEARER_FALLBACK = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
+// The bearer actually used for requests; refreshed by fetchXConfig() per post.
+let activeBearer = X_BEARER_FALLBACK;
 const X_API_BASE = 'https://api.x.com';
 const X_UPLOAD_BASE = 'https://upload.x.com/i/media/upload.json';
 // X rotates the CreateTweet GraphQL operation periodically. Crucially, the
@@ -77,64 +84,83 @@ const CREATE_TWEET_FIELD_TOGGLE_NAMES = [
 // no cookie injection) only to read the CreateTweet operation definition.
 const X_ASSET_HOST = 'https://abs.twimg.com';
 
-// Runtime cache for the dynamically-resolved operation (queryId + flag names).
-let cachedOp = null;
-let cachedOpAt = 0;
-const OP_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+// Runtime cache for the dynamically-resolved client config
+// ({ bearer, queryId, featureNames, fieldToggleNames }). Any field may be null;
+// callers fall back per-field to the baked-in constants.
+let cachedConfig = null;
+let cachedConfigAt = 0;
+const CONFIG_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 function parseStringArray(s) {
     return s ? [...s.matchAll(/"([^"]+)"/g)].map(m => m[1]) : [];
 }
 
-// Best-effort: read the live CreateTweet operation (queryId + featureSwitches +
-// fieldToggles, as a matched set) from X's client bundle so we keep working when
-// X rotates them. Returns null on any failure; callers fall back to baked-in.
-async function fetchCreateTweetOp() {
-    if (cachedOp && (Date.now() - cachedOpAt) < OP_TTL_MS) {
-        return cachedOp;
+// Best-effort: read X's live client config from its public JS bundle so we keep
+// working when X rotates the bearer / CreateTweet queryId / required feature
+// flags. Returns whatever it found ({} if nothing). Never throws — but it does
+// NOT mask request failures: the actual post path surfaces those separately.
+async function fetchXConfig() {
+    if (cachedConfig && (Date.now() - cachedConfigAt) < CONFIG_TTL_MS) {
+        return cachedConfig;
     }
+    const out = {};
     try {
         const homeRes = await fetch('https://x.com/home', { credentials: 'omit' });
         const html = await homeRes.text();
-        const scriptUrls = [...html.matchAll(/src=["']([^"']+\.js[^"']*)["']/g)]
-            .map(m => m[1])
-            .map(u => { try { return new URL(u, 'https://x.com').href; } catch { return null; } })
-            .filter(Boolean)
-            // Only scan X's own static asset host — never third-party scripts.
-            .filter(u => u.startsWith(X_ASSET_HOST + '/'));
+        // Include both src= and href= (preload links) so we don't miss the
+        // bundle that carries the bearer. Only X's own static CDN is scanned.
+        const bundleUrls = [...new Set(
+            [...html.matchAll(/(?:src|href)=["']([^"']+\.js[^"']*)["']/g)]
+                .map(m => { try { return new URL(m[1], 'https://x.com').href; } catch { return null; } })
+                .filter(Boolean)
+                .filter(u => u.startsWith(X_ASSET_HOST + '/'))
+        )];
 
-        for (const url of scriptUrls) {
-            try {
-                const r = await fetch(url, { credentials: 'omit' });
-                const t = await r.text();
-                // Anchor on the operation NAME (not a stray "CreateTweet"
-                // substring) so we don't grab a neighbouring operation's queryId.
-                const opIdx = t.indexOf('operationName:"CreateTweet"');
-                if (opIdx === -1) continue;
+        for (const url of bundleUrls) {
+            if (out.bearer && out.queryId) break; // got everything
+            let t;
+            try { t = await (await fetch(url, { credentials: 'omit' })).text(); }
+            catch { continue; }
 
-                // queryId sits immediately before operationName in the module.
-                const before = t.slice(Math.max(0, opIdx - 160), opIdx);
-                const qid = (before.match(/queryId:"([A-Za-z0-9_-]+)"[^"]*$/) || [])[1];
-
-                // featureSwitches/fieldToggles arrays follow in metadata{}.
-                const after = t.slice(opIdx, opIdx + 6000);
-                const features = parseStringArray((after.match(/featureSwitches:\[([^\]]*)\]/) || [])[1]);
-                const toggles = parseStringArray((after.match(/fieldToggles:\[([^\]]*)\]/) || [])[1]);
-
-                if (qid && features.length) {
-                    cachedOp = { queryId: qid, featureNames: features, fieldToggleNames: toggles };
-                    cachedOpAt = Date.now();
-                    if (qid !== CREATE_TWEET_QUERY_ID) {
-                        console.log('[X] CreateTweet operation refreshed from live bundle (queryId changed)');
-                    }
-                    return cachedOp;
+            // Bearer: longest "AAAA…"-prefixed literal in the bundle.
+            if (!out.bearer) {
+                let best = null;
+                for (const m of t.matchAll(/(AAAAAAAA[A-Za-z0-9%]{40,})/g)) {
+                    if (!best || m[1].length > best.length) best = m[1];
                 }
-            } catch { /* try next bundle */ }
+                if (best) out.bearer = best;
+            }
+
+            // CreateTweet op: anchor on the operation NAME (not a stray
+            // "CreateTweet" substring) so we don't grab a neighbour's queryId.
+            if (!out.queryId) {
+                const opIdx = t.indexOf('operationName:"CreateTweet"');
+                if (opIdx !== -1) {
+                    const before = t.slice(Math.max(0, opIdx - 160), opIdx);
+                    const qid = (before.match(/queryId:"([A-Za-z0-9_-]+)"[^"]*$/) || [])[1];
+                    const after = t.slice(opIdx, opIdx + 6000);
+                    const features = parseStringArray((after.match(/featureSwitches:\[([^\]]*)\]/) || [])[1]);
+                    const toggles = parseStringArray((after.match(/fieldToggles:\[([^\]]*)\]/) || [])[1]);
+                    if (qid && features.length) {
+                        out.queryId = qid;
+                        out.featureNames = features;
+                        out.fieldToggleNames = toggles;
+                    }
+                }
+            }
         }
     } catch (e) {
-        console.warn('[X] live operation refresh failed, using baked-in fallback:', e?.message || e);
+        console.warn('[X] live config refresh failed (will use baked-in fallbacks):', e?.message || e);
     }
-    return cachedOp; // may be null → caller uses baked-in constants
+
+    cachedConfig = out;
+    cachedConfigAt = Date.now();
+    console.log('[X] config resolved', {
+        bearer: out.bearer ? (out.bearer === X_BEARER_FALLBACK ? 'live=baked' : 'live') : 'baked-in',
+        queryId: out.queryId ? (out.queryId === CREATE_TWEET_QUERY_ID ? 'live=baked' : 'live') : 'baked-in',
+        featureCount: out.featureNames?.length ?? CREATE_TWEET_FEATURE_NAMES.length,
+    });
+    return cachedConfig;
 }
 
 async function getCsrfToken() {
@@ -231,7 +257,9 @@ async function withXHeaders(fn) {
 
 function baseHeaders(csrf) {
     return {
-        'authorization': `Bearer ${X_BEARER}`,
+        // activeBearer is refreshed from the live bundle per post (fetchXConfig),
+        // falling back to X_BEARER_FALLBACK.
+        'authorization': `Bearer ${activeBearer}`,
         'x-csrf-token': csrf,
         'x-twitter-auth-type': 'OAuth2Session',
         'x-twitter-active-user': 'yes',
@@ -250,6 +278,10 @@ async function xFetch(url, options, csrf) {
     });
     if (!res.ok) {
         const text = await res.text().catch(() => '');
+        // Make auth failures actionable instead of a bare status.
+        if (res.status === 401 || res.status === 403) {
+            throw new Error(`X API ${res.status}: 認証に失敗しました（Xのログイン切れ、またはbearer/トークンの失効の可能性）。${text.slice(0, 160)}`);
+        }
         throw new Error(`X API ${res.status}: ${text.slice(0, 200)}`);
     }
     return res;
@@ -321,7 +353,7 @@ async function uploadMediaChunked(blob, mimeType, csrf) {
     return mediaId;
 }
 
-async function createTweet(text, mediaIds, csrf) {
+async function createTweet(text, mediaIds, csrf, cfg) {
     const variables = {
         tweet_text: text,
         dark_request: false,
@@ -332,15 +364,15 @@ async function createTweet(text, mediaIds, csrf) {
         semantic_annotation_ids: [],
     };
 
-    // Resolve the CreateTweet operation as a MATCHED SET (queryId + the exact
-    // featureSwitches + fieldToggles it declares). Prefer the live bundle; fall
-    // back to the baked-in constants. Mixing a live queryId with stale feature
-    // names is what produces 422 GRAPHQL_VALIDATION_FAILED, so they must come
-    // from the same source.
-    const op = await fetchCreateTweetOp();
-    const queryId = op?.queryId || CREATE_TWEET_QUERY_ID;
-    const featureNames = op?.featureNames?.length ? op.featureNames : CREATE_TWEET_FEATURE_NAMES;
-    const fieldToggleNames = op?.fieldToggleNames?.length ? op.fieldToggleNames : CREATE_TWEET_FIELD_TOGGLE_NAMES;
+    // Use the CreateTweet operation as a MATCHED SET (queryId + the exact
+    // featureSwitches + fieldToggles it declares). cfg comes from the live bundle;
+    // any missing field falls back to the baked-in constant. Mixing a live queryId
+    // with stale feature names is what produces 422 GRAPHQL_VALIDATION_FAILED — so
+    // when cfg has a live queryId we ALSO use its live feature/toggle lists.
+    const usingLiveOp = !!(cfg && cfg.queryId);
+    const queryId = cfg?.queryId || CREATE_TWEET_QUERY_ID;
+    const featureNames = cfg?.featureNames?.length ? cfg.featureNames : CREATE_TWEET_FEATURE_NAMES;
+    const fieldToggleNames = cfg?.fieldToggleNames?.length ? cfg.fieldToggleNames : CREATE_TWEET_FIELD_TOGGLE_NAMES;
 
     // X only checks these are present (non-null); values don't affect creation.
     const features = Object.fromEntries(featureNames.map(n => [n, true]));
@@ -350,7 +382,7 @@ async function createTweet(text, mediaIds, csrf) {
     const url = `${X_API_BASE}/graphql/${queryId}/CreateTweet`;
     console.log('[X] CreateTweet POST', {
         queryIdPrefix: queryId.slice(0, 6) + '...',
-        source: op ? 'live-bundle' : 'baked-in',
+        opSource: usingLiveOp ? 'live-bundle' : 'baked-in',
         featureCount: featureNames.length,
         textLen: text?.length,
         mediaCount: (mediaIds || []).length,
@@ -393,6 +425,12 @@ export const xApi = {
         const csrf = await getCsrfToken();
         await getAuthToken();
 
+        // Resolve live client config (bearer + CreateTweet op) BEFORE installing
+        // the header rule / uploading media, so the bearer is ready for every
+        // request in this post. Best-effort: missing fields fall back to baked-in.
+        const cfg = await fetchXConfig();
+        activeBearer = cfg?.bearer || X_BEARER_FALLBACK;
+
         return withXHeaders(async () => {
             const mediaIds = [];
             if (imageDataUrl) {
@@ -405,7 +443,7 @@ export const xApi = {
                 mediaIds.push(mediaId);
             }
 
-            return createTweet(text || '', mediaIds, csrf);
+            return createTweet(text || '', mediaIds, csrf, cfg);
         });
     },
 };
