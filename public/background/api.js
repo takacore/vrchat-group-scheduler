@@ -406,6 +406,16 @@ export const api = {
             method: 'POST',
             body: JSON.stringify(body)
         });
+        // apiRequest returns (does not throw on) 404, so confirm success before
+        // treating the body as a created post — otherwise a deleted group / lost
+        // permission would be silently recorded as a successful post.
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            const msg = errData.error?.message || `グループ投稿に失敗しました (HTTP ${res.status})`;
+            throw new Error(res.status === 404
+                ? `グループが見つからないか投稿権限がありません (${msg})`
+                : msg);
+        }
         return res.json();
     },
 

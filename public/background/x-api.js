@@ -10,6 +10,18 @@
 // bundle (fetchXConfig) right before posting. If it can't be obtained we refuse
 // to post and surface a clear error rather than embedding a token in source.
 let activeBearer = null;
+
+// Serialize all X posts. The shared declarativeNetRequest rule (HEADER_RULE_ID)
+// and the module-level activeBearer mean two concurrent posts (e.g. several
+// recurring posts firing in the same minute) would stomp each other's auth
+// headers and fail with 401/403. Chain posts so only one runs at a time.
+let _xPostChain = Promise.resolve();
+function runSerialized(fn) {
+    const result = _xPostChain.then(fn, fn);
+    _xPostChain = result.then(() => {}, () => {});
+    return result;
+}
+
 const X_API_BASE = 'https://api.x.com';
 const X_UPLOAD_BASE = 'https://upload.x.com/i/media/upload.json';
 // X rotates the CreateTweet GraphQL operation periodically. Crucially, the
@@ -424,34 +436,43 @@ export const xApi = {
         }
     },
 
-    async post(text, imageDataUrl = null) {
-        console.log('[X] xApi.post called', { textLen: text?.length, hasImage: !!imageDataUrl });
-        const csrf = await getCsrfToken();
-        await getAuthToken();
-
-        // Resolve live client config (bearer + CreateTweet op) BEFORE installing
-        // the header rule / uploading media, so the bearer is ready for every
-        // request in this post. The bearer is mandatory and never hard-coded: if
-        // we can't read it from X's bundle, refuse to post with a clear error.
-        const cfg = await fetchXConfig();
-        if (!cfg.bearer) {
-            throw new Error('X の認証トークン(bearer)を取得できませんでした。x.com に接続できるか、ログイン状態を確認してください。');
+    post(text, imageDataUrl = null) {
+        // Only accept data:image/ payloads. Never let a crafted/imported post make
+        // the SW fetch an arbitrary URL (blind SSRF / beacon).
+        if (imageDataUrl != null && !(typeof imageDataUrl === 'string' && /^data:image\//i.test(imageDataUrl))) {
+            return Promise.reject(new Error('X画像は data:image/ 形式のみ対応です'));
         }
-        activeBearer = cfg.bearer;
-
-        return withXHeaders(async () => {
-            const mediaIds = [];
-            if (imageDataUrl) {
-                const fetchRes = await fetch(imageDataUrl);
-                const blob = await fetchRes.blob();
-                const mimeType = blob.type || 'image/png';
-                console.log('[X] uploading media', { size: blob.size, mimeType });
-                const mediaId = await uploadMediaChunked(blob, mimeType, csrf);
-                console.log('[X] media uploaded', { mediaId });
-                mediaIds.push(mediaId);
-            }
-
-            return createTweet(text || '', mediaIds, csrf, cfg);
-        });
+        return runSerialized(() => postInner(text, imageDataUrl));
     },
 };
+
+async function postInner(text, imageDataUrl = null) {
+    console.log('[X] xApi.post called', { textLen: text?.length, hasImage: !!imageDataUrl });
+    const csrf = await getCsrfToken();
+    await getAuthToken();
+
+    // Resolve live client config (bearer + CreateTweet op) BEFORE installing
+    // the header rule / uploading media, so the bearer is ready for every
+    // request in this post. The bearer is mandatory and never hard-coded: if
+    // we can't read it from X's bundle, refuse to post with a clear error.
+    const cfg = await fetchXConfig();
+    if (!cfg.bearer) {
+        throw new Error('X の認証トークン(bearer)を取得できませんでした。x.com に接続できるか、ログイン状態を確認してください。');
+    }
+    activeBearer = cfg.bearer;
+
+    return withXHeaders(async () => {
+        const mediaIds = [];
+        if (imageDataUrl) {
+            const fetchRes = await fetch(imageDataUrl);
+            const blob = await fetchRes.blob();
+            const mimeType = blob.type || 'image/png';
+            console.log('[X] uploading media', { size: blob.size, mimeType });
+            const mediaId = await uploadMediaChunked(blob, mimeType, csrf);
+            console.log('[X] media uploaded', { mediaId });
+            mediaIds.push(mediaId);
+        }
+
+        return createTweet(text || '', mediaIds, csrf, cfg);
+    });
+}
