@@ -180,8 +180,16 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
     // For recurring posts, compute the next fire time so the schedule continues
     // even if this run failed (a transient failure must not kill the series).
+    // Backfill the monthly anchor day for legacy posts created before anchorDay
+    // existed, so the live re-arm path doesn't drift either.
     let nextTs = null;
+    let anchorBackfill = null;
     if (isRecurring) {
+        if (post.recurrence.type === 'monthly'
+            && !(Number.isInteger(post.recurrence.anchorDay) && post.recurrence.anchorDay >= 1 && post.recurrence.anchorDay <= 31)) {
+            anchorBackfill = new Date(post.scheduledAt).getDate();
+            post.recurrence.anchorDay = anchorBackfill;
+        }
         const next = computeNextOccurrence(new Date(post.scheduledAt), post.recurrence);
         if (next) nextTs = next.getTime();
     }
@@ -194,6 +202,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
             p.status = 'recurring';
             p.lastRunAt = new Date().toISOString();
             p.lastResult = hardError ? 'failed' : (fullySuccess ? 'success' : 'partial');
+            if (anchorBackfill && p.recurrence) p.recurrence.anchorDay = anchorBackfill;
             if (nextTs) p.scheduledAt = new Date(nextTs).toISOString();
         } else {
             p.status = hardError ? 'failed' : (fullySuccess ? 'completed' : 'partial');
@@ -320,7 +329,7 @@ const ALLOWED_STATUS = new Set(['pending', 'recurring', 'completed', 'partial', 
 const ALLOWED_RECUR = new Set(['daily', 'weekly', 'monthly']);
 const ALLOWED_LASTRESULT = new Set(['success', 'partial', 'failed']);
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
-const MAX_IMAGE_DATAURL = 8 * 1024 * 1024; // ~6MB image as base64; guards storage bloat
+const MAX_IMAGE_DATAURL = 8 * 1024 * 1024; // 8 MiB data: string (~6MB binary); guards storage bloat
 
 function sanitizeImportedPost(p) {
     if (!p || typeof p !== 'object' || typeof p.id !== 'string' || !p.id) return null;
@@ -355,12 +364,18 @@ function sanitizeImportedPost(p) {
         }
         clean.recurrence = rec;
     }
-    // Preserve last-run diagnostics so a round-trip backup keeps history.
-    if (typeof p.lastRunAt === 'string') clean.lastRunAt = p.lastRunAt.slice(0, 40);
-    if (ALLOWED_LASTRESULT.has(p.lastResult)) clean.lastResult = p.lastResult;
-    if (typeof p.error === 'string') clean.error = p.error.slice(0, 500);
-    if (typeof p.xError === 'string') clean.xError = p.xError.slice(0, 500);
-    if (typeof p.vrcImageError === 'string') clean.vrcImageError = p.vrcImageError.slice(0, 500);
+    // Preserve last-run diagnostics so a round-trip backup keeps history — but
+    // ONLY for statuses where an error is meaningful. A 'completed'/'pending'
+    // post must not carry an error string (a tampered backup could otherwise show
+    // a stale 「投稿失敗」 banner on a successful post).
+    const keepDiagnostics = clean.status === 'recurring' || clean.status === 'failed' || clean.status === 'partial';
+    if (keepDiagnostics) {
+        if (typeof p.lastRunAt === 'string') clean.lastRunAt = p.lastRunAt.slice(0, 40);
+        if (ALLOWED_LASTRESULT.has(p.lastResult)) clean.lastResult = p.lastResult;
+        if (typeof p.error === 'string') clean.error = p.error.slice(0, 500);
+        if (typeof p.xError === 'string') clean.xError = p.xError.slice(0, 500);
+        if (typeof p.vrcImageError === 'string') clean.vrcImageError = p.vrcImageError.slice(0, 500);
+    }
     return clean;
 }
 
@@ -415,6 +430,15 @@ async function importPosts(incoming) {
                 if (!next) continue;
                 when = next.getTime();
                 p.scheduledAt = next.toISOString();
+            } else {
+                // Future-start: align the first fire to the recurrence (weekly day
+                // picker) just like SCHEDULE_POST, so a hand-crafted/legacy backup
+                // whose start weekday isn't in days fires on the right day.
+                const aligned = firstFireTime(ts, p.recurrence).getTime();
+                if (aligned !== ts) {
+                    when = aligned;
+                    p.scheduledAt = new Date(aligned).toISOString();
+                }
             }
             await scheduler.addJob(p.id, when);
             rescheduled++;
