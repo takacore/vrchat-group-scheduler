@@ -416,6 +416,10 @@ export default function Dashboard() {
         }
         recurrence.days = recurrenceDays;
       }
+      if (recurrenceType === 'monthly' && scheduledAt) {
+        // Pin the intended day-of-month so short months don't drift the schedule.
+        recurrence.anchorDay = new Date(scheduledAt).getDate();
+      }
     }
 
     try {
@@ -1077,6 +1081,16 @@ export default function Dashboard() {
                         <div style={{ color: 'var(--accent-hover)', fontSize: '0.85rem', marginTop: '2px' }}>
                           ↻ {post.recurrence.type.charAt(0).toUpperCase() + post.recurrence.type.slice(1)}
                           {post.recurrence.type === 'weekly' && post.recurrence.days && ` (${post.recurrence.days.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')})`}
+                        </div>
+                      )}
+                      {post.lastRunAt && (post.lastResult === 'failed' || post.lastResult === 'partial') && (
+                        <div style={{ color: post.lastResult === 'failed' ? 'var(--danger)' : '#d69e2e', fontSize: '0.8rem', marginTop: '2px' }}>
+                          前回 ({new Date(post.lastRunAt).toLocaleString()}): {post.lastResult === 'failed' ? '失敗' : '一部失敗'}
+                        </div>
+                      )}
+                      {post.error && (
+                        <div style={{ color: 'var(--danger)', fontSize: '0.8rem', marginTop: '2px' }}>
+                          投稿失敗: {post.error}
                         </div>
                       )}
                       {post.vrcImageError && (
