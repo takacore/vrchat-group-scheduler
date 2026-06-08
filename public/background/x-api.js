@@ -7,7 +7,13 @@
 const X_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 const X_API_BASE = 'https://api.x.com';
 const X_UPLOAD_BASE = 'https://upload.x.com/i/media/upload.json';
-const CREATE_TWEET_QUERY_ID = 'oB-5XsHNAbjvARJEc8CZFw';
+// NOTE: X rotates the CreateTweet GraphQL queryId and its required feature
+// flags periodically. When posting suddenly returns 404 (stale queryId) or 400
+// "The following features cannot be null: ..." these must be refreshed from the
+// live web bundle: fetch https://abs.twimg.com/responsive-web/client-web/main.*.js
+// and read the module with operationName:"CreateTweet".
+// Last synced from X's live client: queryId + 36 featureSwitches + 8 fieldToggles.
+const CREATE_TWEET_QUERY_ID = 'H-t2v_HvFR07ZBP9aOeKoA';
 
 async function getCsrfToken() {
     return new Promise((resolve, reject) => {
@@ -192,40 +198,66 @@ async function createTweet(text, mediaIds, csrf) {
         semantic_annotation_ids: [],
     };
 
+    // X validates that EVERY feature switch declared by the CreateTweet
+    // operation is present (non-null). Values don't affect whether the tweet is
+    // created, so we mirror the live list and set them all true. Synced from
+    // X's client bundle (see note by CREATE_TWEET_QUERY_ID).
     const features = {
+        premium_content_api_read_enabled: true,
         communities_web_enable_tweet_community_results_fetch: true,
         c9s_tweet_anatomy_moderator_badge_enabled: true,
-        responsive_web_grok_analyze_button_fetch_trends_enabled: false,
+        responsive_web_grok_analyze_button_fetch_trends_enabled: true,
         responsive_web_grok_analyze_post_followups_enabled: true,
-        responsive_web_jetfuel_frame: false,
+        rweb_cashtags_composer_attachment_enabled: true,
+        responsive_web_jetfuel_frame: true,
         responsive_web_grok_share_attachment_enabled: true,
+        responsive_web_grok_annotations_enabled: true,
         responsive_web_edit_tweet_api_enabled: true,
+        rweb_conversational_replies_downvote_enabled: true,
         graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
         view_counts_everywhere_api_enabled: true,
         longform_notetweets_consumption_enabled: true,
         responsive_web_twitter_article_tweet_consumption_enabled: true,
-        tweet_awards_web_tipping_enabled: false,
-        creator_subscriptions_quote_tweet_preview_enabled: false,
+        content_disclosure_indicator_enabled: true,
+        content_disclosure_ai_generated_indicator_enabled: true,
+        responsive_web_grok_show_grok_translated_post: true,
+        responsive_web_grok_analysis_button_from_backend: true,
+        post_ctas_fetch_enabled: true,
         longform_notetweets_rich_text_read_enabled: true,
         longform_notetweets_inline_media_enabled: true,
         profile_label_improvements_pcf_label_in_post_enabled: true,
+        responsive_web_profile_redirect_enabled: true,
         rweb_tipjar_consumption_enabled: true,
-        responsive_web_graphql_exclude_directive_enabled: true,
-        verified_phone_label_enabled: false,
+        verified_phone_label_enabled: true,
         articles_preview_enabled: true,
-        responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
-        responsive_web_graphql_timeline_navigation_enabled: true,
-        responsive_web_enhance_cards_enabled: false,
+        rweb_cashtags_enabled: true,
+        responsive_web_grok_community_note_auto_translation_is_enabled: true,
+        responsive_web_graphql_skip_user_profile_image_extensions_enabled: true,
+        freedom_of_speech_not_reach_fetch_enabled: true,
         standardized_nudges_misinfo: true,
         tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
-        rweb_video_timestamps_enabled: true,
-        freedom_of_speech_not_reach_fetch_enabled: true,
+        responsive_web_grok_image_annotation_enabled: true,
+        responsive_web_grok_imagine_annotation_enabled: true,
+        responsive_web_graphql_timeline_navigation_enabled: true,
+    };
+
+    // Newer CreateTweet also requires fieldToggles to be present (non-null).
+    // We post plain text/image tweets, so all article/grok toggles are false.
+    const fieldToggles = {
+        withArticleRichContentState: false,
+        withArticlePlainText: false,
+        withArticleSummaryText: false,
+        withArticleVoiceOver: false,
+        withGrokAnalyze: false,
+        withDisallowedReplyControls: false,
+        withPayments: false,
+        withAuxiliaryUserLabels: false,
     };
 
     const url = `${X_API_BASE}/graphql/${CREATE_TWEET_QUERY_ID}/CreateTweet`;
     const res = await xFetch(url, {
         method: 'POST',
-        body: JSON.stringify({ variables, features, queryId: CREATE_TWEET_QUERY_ID }),
+        body: JSON.stringify({ variables, features, fieldToggles, queryId: CREATE_TWEET_QUERY_ID }),
         headers: { 'content-type': 'application/json' },
     }, csrf);
     return res.json();

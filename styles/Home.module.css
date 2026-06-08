@@ -1,9 +1,18 @@
+/*
+ * VRChat Group Notify Scheduler — refined dark theme.
+ * Cool-slate ramp, structure via 1px hairlines (not heavy shadows),
+ * and ONE disciplined indigo accent reserved for primary actions / focus.
+ * Design tokens are defined on :root in the injected <style> block in pages/index.jsx.
+ */
+
 .container {
     min-height: 100vh;
-    padding: 2rem;
-    background-color: #1a202c;
-    color: #fff;
-    font-family: 'Inter', sans-serif;
+    padding: 16px;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
     min-width: 700px;
     max-width: 1200px;
     margin: 0 auto;
@@ -13,197 +22,311 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 2rem;
-    border-bottom: 1px solid #2d3748;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
 }
 
 .title {
-    font-size: 1.5rem;
+    font-size: 14px;
     font-weight: 700;
-    color: #63b3ed;
+    letter-spacing: -0.01em;
+    color: var(--text);
 }
 
 .userInfo {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.75rem;
 }
 
 .avatar {
-    width: 40px;
-    height: 40px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     object-fit: cover;
-    border: 2px solid #63b3ed;
+    border: 1px solid var(--border);
 }
 
 .username {
+    font-size: 12px;
     font-weight: 600;
+    color: var(--text-secondary);
 }
 
 .grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 2rem;
+    gap: 16px;
 }
 
 @media (min-width: 768px) {
+    .container {
+        padding: 24px;
+    }
+
     .grid {
         grid-template-columns: 1fr 2fr;
+        gap: 24px;
+    }
+
+    .card {
+        padding: 20px;
     }
 }
 
 .card {
-    background-color: #2d3748;
-    padding: 1.5rem;
+    background-color: var(--surface);
+    padding: 16px;
     border-radius: 8px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
 }
 
 .cardTitle {
-    font-size: 1.25rem;
+    font-size: 13px;
     font-weight: 600;
-    margin-bottom: 1rem;
-    color: #e2e8f0;
+    letter-spacing: 0.01em;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
 }
 
 .formGroup {
-    margin-bottom: 1rem;
+    margin-bottom: 14px;
 }
 
 .label {
     display: block;
-    font-size: 0.875rem;
-    margin-bottom: 0.5rem;
-    color: #a0aec0;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text-muted);
+}
+
+/* Reusable helper / constraint text under fields */
+.helper {
+    font-size: 12px;
+    color: var(--text-subtle);
+    margin-top: 6px;
 }
 
 .input,
 .textarea,
 .select {
     width: 100%;
-    padding: 0.75rem;
+    padding: 8px 12px;
     border-radius: 6px;
-    border: 1px solid #4a5568;
-    background-color: #1a202c;
-    color: #fff;
-    font-size: 1rem;
+    border: 1px solid var(--border);
+    background-color: var(--well);
+    color: var(--text);
+    font-size: 14px;
     box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+    color: var(--text-subtle);
+}
+
+.input:hover,
+.textarea:hover,
+.select:hover {
+    border-color: var(--border-strong);
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 .textarea {
     resize: vertical;
-    min-height: 100px;
+    min-height: 96px;
+    line-height: 1.5;
 }
 
 .button {
     width: 100%;
-    padding: 0.75rem;
-    border-radius: 6px;
+    min-height: 40px;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
     border: none;
-    background-color: #3182ce;
-    color: #fff;
+    background-color: var(--accent);
+    color: var(--on-accent);
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
+    transition: background-color 0.15s ease;
 }
 
 .button:hover {
-    background-color: #2b6cb0;
+    background-color: var(--accent-hover);
+}
+
+.button:active {
+    background-color: var(--accent-pressed);
 }
 
 .postList {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
 }
 
 .postItem {
-    background-color: #1a202c;
-    padding: 1rem;
-    border-radius: 6px;
-    border: 1px solid #4a5568;
+    background-color: transparent;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.12s ease;
+}
+
+.postItem:last-child {
+    border-bottom: none;
+}
+
+.postItem:hover {
+    background-color: var(--surface-2);
+}
+
+@media (min-width: 768px) {
+    .postItem {
+        padding: 12px 14px;
+    }
 }
 
 .postInfo {
     flex: 1;
+    min-width: 0;
 }
 
 .postTitle {
+    font-size: 14px;
     font-weight: 600;
-    margin-bottom: 0.25rem;
+    line-height: 1.35;
+    margin-bottom: 2px;
+    color: var(--text);
 }
 
 .postMeta {
-    font-size: 0.875rem;
-    color: #a0aec0;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-feature-settings: 'tnum';
 }
 
+/* Status pills: tinted-translucent chips, not solid blocks */
 .status {
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    font-weight: 700;
-    margin-left: 1rem;
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    margin-left: 8px;
+    white-space: nowrap;
 }
 
 .statusPending {
-    background-color: #d69e2e;
-    color: #fff;
+    color: var(--status-pending-fg);
+    background-color: var(--status-pending-bg);
 }
 
 .statusPosted {
-    background-color: #38a169;
-    color: #fff;
+    color: var(--status-posted-fg);
+    background-color: var(--status-posted-bg);
 }
 
 .statusFailed {
-    background-color: #e53e3e;
-    color: #fff;
+    color: var(--status-failed-fg);
+    background-color: var(--status-failed-bg);
 }
 
 .statusMissed {
-    background-color: #718096;
-    color: #fff;
+    color: var(--status-neutral-fg);
+    background-color: var(--status-neutral-bg);
 }
 
+.statusDeleted {
+    color: var(--status-neutral-fg);
+    background-color: var(--status-neutral-bg);
+    text-decoration: line-through;
+}
+
+/* New: recurring posts (status:'recurring' had no pill before — only an inline bg) */
+.statusRecurring {
+    color: var(--status-recurring-fg);
+    background-color: var(--status-recurring-bg);
+}
+
+/* Trailing row actions — quiet ghost buttons that only color on hover */
 .deleteBtn {
     background: none;
     border: none;
-    color: #fc8181;
+    color: var(--text-muted);
     cursor: pointer;
-    margin-left: 1rem;
-    font-size: 1.25rem;
+    margin-left: 4px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    line-height: 1;
+    transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .deleteBtn:hover {
-    color: #f56565;
+    color: var(--danger);
+    background-color: rgba(229, 62, 62, 0.12);
 }
 
 .retryBtn {
     background: none;
     border: none;
-    color: #68d391;
+    color: var(--text-muted);
     cursor: pointer;
-    margin-left: 0.5rem;
-    font-size: 1.25rem;
-    transition: color 0.2s;
+    margin-left: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    line-height: 1;
+    transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .retryBtn:hover {
-    color: #48bb78;
+    color: var(--text);
+    background-color: var(--surface-2);
+}
+
+/* Inline ghost badges (Repeat / IMG / X are styled in JSX; this remains for reuse) */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid var(--badge-border);
+    color: var(--badge-text);
+    background: transparent;
 }
 
 .errorBanner {
-    background-color: #f56565;
-    color: white;
-    padding: 1rem;
-    margin-bottom: 2rem;
-    border-radius: 6px;
+    background-color: var(--status-failed-bg);
+    color: #fca5a5;
+    padding: 0.85rem 1rem;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    border: 1px solid rgba(229, 62, 62, 0.35);
     font-weight: 600;
+    font-size: 0.9rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -212,46 +335,55 @@
 .closeError {
     background: none;
     border: none;
-    color: white;
+    color: inherit;
     font-weight: bold;
     cursor: pointer;
     font-size: 1.2rem;
+    opacity: 0.8;
 }
 
-.statusDeleted {
-    background-color: #718096;
-    color: #cbd5e0;
-    text-decoration: line-through;
+.closeError:hover {
+    opacity: 1;
 }
 
 .trashToggle {
     background: none;
-    border: 1px solid #4a5568;
-    color: #a0aec0;
-    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 6px 12px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.875rem;
+    font-size: 12px;
     margin-left: 1rem;
+    transition: all 0.15s ease;
+}
+
+.trashToggle:hover {
+    border-color: var(--border-strong);
+    color: var(--text-secondary);
 }
 
 .trashToggleActive {
-    background-color: #4a5568;
-    color: #fff;
+    background-color: var(--surface-2);
+    border-color: var(--border-strong);
+    color: var(--text);
 }
 
-/* Update Banner */
+/* Update Banner — quiet surface card with an accent edge */
 .updateBanner {
-    background: linear-gradient(135deg, #2b6cb0 0%, #4c51bf 100%);
-    color: white;
-    padding: 1rem 1.5rem;
-    margin-bottom: 2rem;
+    background-color: var(--surface);
+    color: var(--text);
+    padding: 1rem 1.25rem;
+    margin-bottom: 16px;
     border-radius: 8px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 1rem;
     animation: slideDown 0.3s ease-out;
-    box-shadow: 0 4px 12px rgba(66, 99, 235, 0.3);
+    box-shadow: var(--shadow-card);
 }
 
 @keyframes slideDown {
@@ -268,62 +400,66 @@
 
 .updateBannerInfo {
     flex: 1;
+    min-width: 0;
 }
 
 .updateBannerTitle {
     font-weight: 700;
-    font-size: 1rem;
+    font-size: 0.95rem;
     margin-bottom: 0.25rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    color: var(--text);
 }
 
 .updateBannerMeta {
     font-size: 0.85rem;
-    opacity: 0.9;
+    color: var(--text-muted);
 }
 
 .updateBannerActions {
     display: flex;
     gap: 0.75rem;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .updateDownloadBtn {
-    background-color: #fff;
-    color: #2b6cb0;
+    background-color: var(--accent);
+    color: var(--on-accent);
     border: none;
     padding: 0.5rem 1rem;
     border-radius: 6px;
     font-weight: 600;
     cursor: pointer;
     font-size: 0.875rem;
-    transition: background-color 0.2s;
+    transition: background-color 0.15s ease;
 }
 
 .updateDownloadBtn:hover {
-    background-color: #e2e8f0;
+    background-color: var(--accent-hover);
 }
 
 .updateDismissBtn {
     background: none;
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    color: white;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
     padding: 0.5rem 1rem;
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.875rem;
-    transition: background-color 0.2s;
+    transition: all 0.15s ease;
 }
 
 .updateDismissBtn:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-strong);
+    color: var(--text-secondary);
 }
 
 .betaBadge {
-    background-color: #d69e2e;
-    color: #1a202c;
+    background-color: var(--warn);
+    color: var(--bg);
     font-size: 0.65rem;
     padding: 0.15rem 0.4rem;
     border-radius: 4px;
@@ -332,11 +468,11 @@
     letter-spacing: 0.05em;
 }
 
-/* Settings Button */
+/* Settings Button (also base for the header ghost icons) */
 .settingsBtn {
     background: none;
-    border: 1px solid #4a5568;
-    color: #a0aec0;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
     width: 36px;
     height: 36px;
     border-radius: 50%;
@@ -345,23 +481,26 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
     margin-right: 1rem;
 }
 
 .settingsBtn:hover {
-    background-color: #4a5568;
-    color: #fff;
+    background-color: var(--surface-2);
+    border-color: var(--border-strong);
+    color: var(--text);
 }
 
-/* Settings Modal */
+/* Overlays */
 .settingsOverlay {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.6);
+    background-color: var(--overlay);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -380,19 +519,20 @@
 }
 
 .settingsModal {
-    background-color: #2d3748;
-    border-radius: 12px;
-    padding: 2rem;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.75rem;
     width: 90%;
     max-width: 450px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-elevated);
     animation: modalSlide 0.3s ease-out;
 }
 
 @keyframes modalSlide {
     from {
         opacity: 0;
-        transform: translateY(20px) scale(0.95);
+        transform: translateY(20px) scale(0.97);
     }
 
     to {
@@ -402,9 +542,9 @@
 }
 
 .settingsTitle {
-    font-size: 1.25rem;
+    font-size: 1.15rem;
     font-weight: 700;
-    color: #e2e8f0;
+    color: var(--text);
     margin-bottom: 1.5rem;
     display: flex;
     align-items: center;
@@ -417,26 +557,34 @@
 
 .settingsLabel {
     display: block;
-    font-size: 0.875rem;
-    color: #a0aec0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
     margin-bottom: 0.5rem;
 }
 
 .settingsSelect {
     width: 100%;
-    padding: 0.75rem;
+    padding: 8px 12px;
     border-radius: 6px;
-    border: 1px solid #4a5568;
-    background-color: #1a202c;
-    color: #fff;
-    font-size: 1rem;
+    border: 1px solid var(--border);
+    background-color: var(--well);
+    color: var(--text);
+    font-size: 14px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.settingsSelect:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 .settingsCheckbox {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: #e2e8f0;
+    color: var(--text-secondary);
     font-size: 0.9rem;
 }
 
@@ -448,50 +596,51 @@
 
 .settingsSaveBtn {
     flex: 1;
-    padding: 0.75rem;
+    padding: 0.7rem;
     border-radius: 6px;
     border: none;
-    background-color: #3182ce;
-    color: #fff;
+    background-color: var(--accent);
+    color: var(--on-accent);
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color 0.15s ease;
 }
 
 .settingsSaveBtn:hover {
-    background-color: #2b6cb0;
+    background-color: var(--accent-hover);
 }
 
 .settingsCloseBtn {
-    padding: 0.75rem 1.5rem;
+    padding: 0.7rem 1.5rem;
     border-radius: 6px;
-    border: 1px solid #4a5568;
+    border: 1px solid var(--border);
     background: none;
-    color: #a0aec0;
+    color: var(--text-muted);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
 }
 
 .settingsCloseBtn:hover {
-    background-color: #4a5568;
-    color: #fff;
+    border-color: var(--border-strong);
+    color: var(--text);
 }
 
 .settingsCheckBtn {
     width: 100%;
-    padding: 0.75rem;
+    padding: 0.7rem;
     border-radius: 6px;
-    border: 1px solid #4a5568;
+    border: 1px solid var(--border);
     background: none;
-    color: #63b3ed;
+    color: var(--accent-hover);
     cursor: pointer;
     font-weight: 600;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
     margin-top: 0.5rem;
 }
 
 .settingsCheckBtn:hover {
-    background-color: rgba(99, 179, 237, 0.1);
+    background-color: var(--accent-tint);
+    border-color: var(--border-strong);
 }
 
 .settingsCheckBtn:disabled {
@@ -507,27 +656,28 @@
 }
 
 .settingsResultOk {
-    background-color: rgba(56, 161, 105, 0.15);
-    color: #68d391;
+    background-color: var(--status-posted-bg);
+    color: var(--ok);
     border: 1px solid rgba(56, 161, 105, 0.3);
 }
 
 .settingsResultUpdate {
-    background-color: rgba(66, 99, 235, 0.15);
-    color: #90cdf4;
-    border: 1px solid rgba(66, 99, 235, 0.3);
+    background-color: var(--accent-tint);
+    color: var(--accent-hover);
+    border: 1px solid rgba(110, 121, 240, 0.3);
 }
 
 .settingsResultError {
-    background-color: rgba(229, 62, 62, 0.15);
-    color: #fc8181;
+    background-color: var(--status-failed-bg);
+    color: var(--danger);
     border: 1px solid rgba(229, 62, 62, 0.3);
 }
 
 .versionInfo {
-    font-size: 0.75rem;
-    color: #718096;
+    font-size: 11px;
+    color: var(--text-muted);
     margin-right: 0.75rem;
+    font-feature-settings: 'tnum';
 }
 
 /* Group Scan Modal */
@@ -537,7 +687,9 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: var(--overlay);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -546,24 +698,25 @@
 }
 
 .modalContent {
-    background-color: #2d3748;
-    border-radius: 12px;
-    padding: 2rem;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.75rem;
     width: 90%;
     max-width: 420px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-elevated);
     animation: modalSlide 0.3s ease-out;
 }
 
 .modalTitle {
     font-size: 1.15rem;
     font-weight: 700;
-    color: #e2e8f0;
+    color: var(--text);
     margin-bottom: 1rem;
 }
 
 .modalText {
-    color: #cbd5e0;
+    color: var(--text-secondary);
     font-size: 0.9rem;
     line-height: 1.6;
     margin-bottom: 1.5rem;
@@ -578,16 +731,16 @@
     padding: 0.65rem 1.5rem;
     border-radius: 6px;
     border: none;
-    background-color: #3182ce;
-    color: #fff;
+    background-color: var(--accent);
+    color: var(--on-accent);
     font-weight: 600;
     cursor: pointer;
     font-size: 0.9rem;
-    transition: background-color 0.2s;
+    transition: background-color 0.15s ease;
 }
 
 .scanStartBtn:hover {
-    background-color: #2b6cb0;
+    background-color: var(--accent-hover);
 }
 
 /* Scan Progress */
@@ -598,21 +751,21 @@
 .scanProgressBar {
     width: 100%;
     height: 6px;
-    background-color: #4a5568;
-    border-radius: 3px;
+    background-color: var(--well);
+    border-radius: 999px;
     overflow: hidden;
     margin-bottom: 0.75rem;
 }
 
 .scanProgressFill {
     height: 100%;
-    background: linear-gradient(90deg, #3182ce, #63b3ed);
-    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+    border-radius: 999px;
     transition: width 0.3s ease, background 0.3s ease;
 }
 
 .scanProgressFillWaiting {
-    background: linear-gradient(90deg, #d69e2e, #ecc94b);
+    background: linear-gradient(90deg, #d69e2e, var(--warn));
 }
 
 .scanProgressInfo {
@@ -620,14 +773,15 @@
     justify-content: space-between;
     align-items: center;
     font-size: 0.8rem;
-    color: #a0aec0;
+    color: var(--text-muted);
     min-height: 1.2rem;
 }
 
 .scanProgressCount {
     font-weight: 600;
-    color: #63b3ed;
+    color: var(--accent-hover);
     flex-shrink: 0;
+    font-feature-settings: 'tnum';
 }
 
 .scanProgressName {
@@ -639,34 +793,41 @@
     max-width: 250px;
 }
 
-/* Toast Notification */
+/* Toast Notification — compact floating chip with an intent stripe */
 .toast {
     position: fixed;
     bottom: 2rem;
     right: 2rem;
     padding: 0.75rem 1.25rem;
-    border-radius: 8px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     gap: 0.6rem;
     font-size: 0.9rem;
     font-weight: 500;
     z-index: 1200;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    background-color: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-elevated);
     animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 2.7s forwards;
     max-width: 360px;
 }
 
 .toastSuccess {
-    background-color: #276749;
-    color: #c6f6d5;
-    border: 1px solid #38a169;
+    border-left: 3px solid var(--ok);
+}
+
+.toastSuccess > span:first-child {
+    color: var(--ok);
 }
 
 .toastError {
-    background-color: #742a2a;
-    color: #fed7d7;
-    border: 1px solid #e53e3e;
+    border-left: 3px solid var(--danger);
+}
+
+.toastError > span:first-child {
+    color: var(--danger);
 }
 
 .toastClose {
@@ -675,7 +836,7 @@
     color: inherit;
     font-size: 1.1rem;
     cursor: pointer;
-    opacity: 0.7;
+    opacity: 0.6;
     margin-left: 0.5rem;
     padding: 0;
     line-height: 1;
@@ -720,31 +881,58 @@
 .confirmCancelBtn {
     padding: 0.6rem 1.25rem;
     border-radius: 6px;
-    border: 1px solid #4a5568;
+    border: 1px solid var(--border);
     background: none;
-    color: #a0aec0;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 0.9rem;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
 }
 
 .confirmCancelBtn:hover {
-    background-color: #4a5568;
-    color: #fff;
+    border-color: var(--border-strong);
+    color: var(--text);
 }
 
 .confirmOkBtn {
     padding: 0.6rem 1.25rem;
     border-radius: 6px;
     border: none;
-    background-color: #e53e3e;
-    color: #fff;
+    background-color: var(--danger);
+    color: var(--bg);
     font-weight: 600;
     cursor: pointer;
     font-size: 0.9rem;
-    transition: background-color 0.2s;
+    transition: filter 0.15s ease;
 }
 
 .confirmOkBtn:hover {
-    background-color: #c53030;
+    filter: brightness(1.08);
+}
+
+/* Empty state for the Scheduled Queue */
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 16px;
+    gap: 8px;
+}
+
+.emptyStateIcon {
+    font-size: 32px;
+    opacity: 0.5;
+    line-height: 1;
+}
+
+.emptyStateTitle {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.emptyStateHint {
+    font-size: 12px;
+    color: var(--text-subtle);
 }
