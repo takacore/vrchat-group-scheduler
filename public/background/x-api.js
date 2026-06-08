@@ -12,8 +12,48 @@ const X_UPLOAD_BASE = 'https://upload.x.com/i/media/upload.json';
 // "The following features cannot be null: ..." these must be refreshed from the
 // live web bundle: fetch https://abs.twimg.com/responsive-web/client-web/main.*.js
 // and read the module with operationName:"CreateTweet".
+// We also dynamically refresh queryId at runtime (see fetchCreateTweetQueryId)
+// so the hard-coded value below is only a fallback when x.com is unreachable.
 // Last synced from X's live client: queryId + 36 featureSwitches + 8 fieldToggles.
 const CREATE_TWEET_QUERY_ID = 'H-t2v_HvFR07ZBP9aOeKoA';
+
+// Cache for dynamically-fetched queryId. Refreshes from x.com's bundle to
+// survive X rotating the value without requiring an extension release.
+let cachedQueryId = null;
+let cachedQueryIdAt = 0;
+const QUERY_ID_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+async function fetchCreateTweetQueryId() {
+    if (cachedQueryId && (Date.now() - cachedQueryIdAt) < QUERY_ID_TTL_MS) {
+        return cachedQueryId;
+    }
+    try {
+        const homeRes = await fetch('https://x.com/home', { credentials: 'include' });
+        const html = await homeRes.text();
+        const scriptUrls = [...html.matchAll(/src=["']([^"']+\.js[^"']*)["']/g)]
+            .map(m => m[1])
+            .map(u => u.startsWith('http') ? u : (u.startsWith('//') ? 'https:' + u : 'https://x.com' + u));
+        for (const url of scriptUrls) {
+            try {
+                const r = await fetch(url);
+                const t = await r.text();
+                const idx = t.indexOf('"CreateTweet"');
+                if (idx === -1) continue;
+                const around = t.slice(Math.max(0, idx - 500), idx + 200);
+                const m = around.match(/queryId:\s*["']([A-Za-z0-9_-]+)["']/);
+                if (m) {
+                    cachedQueryId = m[1];
+                    cachedQueryIdAt = Date.now();
+                    console.log('[X] CreateTweet queryId refreshed from live bundle');
+                    return m[1];
+                }
+            } catch {}
+        }
+    } catch (e) {
+        console.warn('[X] Failed to refresh queryId from x.com, using hardcoded fallback:', e);
+    }
+    return cachedQueryId || CREATE_TWEET_QUERY_ID;
+}
 
 async function getCsrfToken() {
     return new Promise((resolve, reject) => {
@@ -168,6 +208,10 @@ async function uploadMediaChunked(blob, mimeType, csrf) {
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
     }, csrf);
     const finalizeData = await finalizeRes.json();
+    if (finalizeData.errors?.length) {
+        const e = finalizeData.errors[0];
+        throw new Error(`X media FINALIZE失敗: ${e.message || JSON.stringify(e)}`);
+    }
 
     // STATUS polling if processing
     if (finalizeData.processing_info) {
@@ -254,13 +298,26 @@ async function createTweet(text, mediaIds, csrf) {
         withAuxiliaryUserLabels: false,
     };
 
-    const url = `${X_API_BASE}/graphql/${CREATE_TWEET_QUERY_ID}/CreateTweet`;
+    const queryId = await fetchCreateTweetQueryId();
+    const url = `${X_API_BASE}/graphql/${queryId}/CreateTweet`;
+    console.log('[X] CreateTweet POST', { queryIdPrefix: queryId.slice(0, 6) + '...', textLen: text?.length, mediaIds });
     const res = await xFetch(url, {
         method: 'POST',
-        body: JSON.stringify({ variables, features, fieldToggles, queryId: CREATE_TWEET_QUERY_ID }),
+        body: JSON.stringify({ variables, features, fieldToggles, queryId }),
         headers: { 'content-type': 'application/json' },
     }, csrf);
-    return res.json();
+    const data = await res.json();
+    if (data.errors?.length) {
+        const e = data.errors[0];
+        console.error('[X] CreateTweet response had errors:', data.errors);
+        throw new Error(`X CreateTweet失敗 (code ${e.code ?? 'n/a'}): ${e.message || JSON.stringify(e)}`);
+    }
+    if (!data.data?.create_tweet) {
+        console.error('[X] CreateTweet unexpected response shape:', data);
+        throw new Error('X CreateTweet失敗: 予期しないレスポンス形式');
+    }
+    console.log('[X] CreateTweet success');
+    return data;
 }
 
 export const xApi = {
