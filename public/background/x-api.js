@@ -7,31 +7,91 @@
 const X_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 const X_API_BASE = 'https://api.x.com';
 const X_UPLOAD_BASE = 'https://upload.x.com/i/media/upload.json';
-// NOTE: X rotates the CreateTweet GraphQL queryId and its required feature
-// flags periodically. When posting suddenly returns 404 (stale queryId) or 400
-// "The following features cannot be null: ..." the hard-coded values below must
-// be refreshed from the live web bundle.
-// To survive rotation without an extension release, we ALSO refresh the queryId
-// at runtime from X's live client bundle (see fetchCreateTweetQueryId). The
-// hard-coded value is the verified-working fallback used when x.com is
-// unreachable or the bundle layout changes.
-// Last synced from X's live client: queryId + 36 featureSwitches + 8 fieldToggles.
+// X rotates the CreateTweet GraphQL operation periodically. Crucially, the
+// queryId and its required `featureSwitches` / `fieldToggles` are a MATCHED SET:
+// sending a new queryId with the old feature list (or vice-versa) yields
+// 422 GRAPHQL_VALIDATION_FAILED. So we always use them together.
+//
+// To survive rotation without an extension release we read the WHOLE operation
+// (queryId + featureSwitches + fieldToggles) from X's live client bundle at
+// runtime (see fetchCreateTweetOp). The baked-in constants below are the
+// verified-working fallback used when the bundle is unreachable.
+// Last synced from X's live client (operationName:"CreateTweet").
 const CREATE_TWEET_QUERY_ID = 'H-t2v_HvFR07ZBP9aOeKoA';
 
-// X serves its web client JS from this static CDN. We GET (no credentials, no
-// cookie injection) the bundle only to read the current CreateTweet queryId.
+// featureSwitches the operation declares; X only checks they are PRESENT
+// (non-null), values don't affect creation, so we send every one as true.
+const CREATE_TWEET_FEATURE_NAMES = [
+    'premium_content_api_read_enabled',
+    'communities_web_enable_tweet_community_results_fetch',
+    'c9s_tweet_anatomy_moderator_badge_enabled',
+    'responsive_web_grok_analyze_button_fetch_trends_enabled',
+    'responsive_web_grok_analyze_post_followups_enabled',
+    'rweb_cashtags_composer_attachment_enabled',
+    'responsive_web_jetfuel_frame',
+    'responsive_web_grok_share_attachment_enabled',
+    'responsive_web_grok_annotations_enabled',
+    'responsive_web_edit_tweet_api_enabled',
+    'rweb_conversational_replies_downvote_enabled',
+    'graphql_is_translatable_rweb_tweet_is_translatable_enabled',
+    'view_counts_everywhere_api_enabled',
+    'longform_notetweets_consumption_enabled',
+    'responsive_web_twitter_article_tweet_consumption_enabled',
+    'content_disclosure_indicator_enabled',
+    'content_disclosure_ai_generated_indicator_enabled',
+    'responsive_web_grok_show_grok_translated_post',
+    'responsive_web_grok_analysis_button_from_backend',
+    'post_ctas_fetch_enabled',
+    'longform_notetweets_rich_text_read_enabled',
+    'longform_notetweets_inline_media_enabled',
+    'profile_label_improvements_pcf_label_in_post_enabled',
+    'responsive_web_profile_redirect_enabled',
+    'rweb_tipjar_consumption_enabled',
+    'verified_phone_label_enabled',
+    'articles_preview_enabled',
+    'rweb_cashtags_enabled',
+    'responsive_web_grok_community_note_auto_translation_is_enabled',
+    'responsive_web_graphql_skip_user_profile_image_extensions_enabled',
+    'freedom_of_speech_not_reach_fetch_enabled',
+    'standardized_nudges_misinfo',
+    'tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled',
+    'responsive_web_grok_image_annotation_enabled',
+    'responsive_web_grok_imagine_annotation_enabled',
+    'responsive_web_graphql_timeline_navigation_enabled',
+];
+
+// fieldToggles the operation declares. We post plain text/image tweets, so all
+// article/grok/payment toggles are false.
+const CREATE_TWEET_FIELD_TOGGLE_NAMES = [
+    'withArticleRichContentState',
+    'withArticlePlainText',
+    'withArticleSummaryText',
+    'withArticleVoiceOver',
+    'withGrokAnalyze',
+    'withDisallowedReplyControls',
+    'withPayments',
+    'withAuxiliaryUserLabels',
+];
+
+// X serves its web client JS from this static CDN. We GET it (no credentials,
+// no cookie injection) only to read the CreateTweet operation definition.
 const X_ASSET_HOST = 'https://abs.twimg.com';
 
-// Runtime cache for the dynamically-resolved queryId.
-let cachedQueryId = null;
-let cachedQueryIdAt = 0;
-const QUERY_ID_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+// Runtime cache for the dynamically-resolved operation (queryId + flag names).
+let cachedOp = null;
+let cachedOpAt = 0;
+const OP_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-// Best-effort: read the live CreateTweet queryId from X's client bundle so we
-// keep working when X rotates it. Falls back to the verified hard-coded value.
-async function fetchCreateTweetQueryId() {
-    if (cachedQueryId && (Date.now() - cachedQueryIdAt) < QUERY_ID_TTL_MS) {
-        return cachedQueryId;
+function parseStringArray(s) {
+    return s ? [...s.matchAll(/"([^"]+)"/g)].map(m => m[1]) : [];
+}
+
+// Best-effort: read the live CreateTweet operation (queryId + featureSwitches +
+// fieldToggles, as a matched set) from X's client bundle so we keep working when
+// X rotates them. Returns null on any failure; callers fall back to baked-in.
+async function fetchCreateTweetOp() {
+    if (cachedOp && (Date.now() - cachedOpAt) < OP_TTL_MS) {
+        return cachedOp;
     }
     try {
         const homeRes = await fetch('https://x.com/home', { credentials: 'omit' });
@@ -47,24 +107,34 @@ async function fetchCreateTweetQueryId() {
             try {
                 const r = await fetch(url, { credentials: 'omit' });
                 const t = await r.text();
-                const idx = t.indexOf('"CreateTweet"');
-                if (idx === -1) continue;
-                const around = t.slice(Math.max(0, idx - 600), idx + 200);
-                const m = around.match(/queryId:\s*["']([A-Za-z0-9_-]+)["']/);
-                if (m) {
-                    cachedQueryId = m[1];
-                    cachedQueryIdAt = Date.now();
-                    if (m[1] !== CREATE_TWEET_QUERY_ID) {
-                        console.log('[X] CreateTweet queryId refreshed from live bundle (differs from baked-in)');
+                // Anchor on the operation NAME (not a stray "CreateTweet"
+                // substring) so we don't grab a neighbouring operation's queryId.
+                const opIdx = t.indexOf('operationName:"CreateTweet"');
+                if (opIdx === -1) continue;
+
+                // queryId sits immediately before operationName in the module.
+                const before = t.slice(Math.max(0, opIdx - 160), opIdx);
+                const qid = (before.match(/queryId:"([A-Za-z0-9_-]+)"[^"]*$/) || [])[1];
+
+                // featureSwitches/fieldToggles arrays follow in metadata{}.
+                const after = t.slice(opIdx, opIdx + 6000);
+                const features = parseStringArray((after.match(/featureSwitches:\[([^\]]*)\]/) || [])[1]);
+                const toggles = parseStringArray((after.match(/fieldToggles:\[([^\]]*)\]/) || [])[1]);
+
+                if (qid && features.length) {
+                    cachedOp = { queryId: qid, featureNames: features, fieldToggleNames: toggles };
+                    cachedOpAt = Date.now();
+                    if (qid !== CREATE_TWEET_QUERY_ID) {
+                        console.log('[X] CreateTweet operation refreshed from live bundle (queryId changed)');
                     }
-                    return m[1];
+                    return cachedOp;
                 }
             } catch { /* try next bundle */ }
         }
     } catch (e) {
-        console.warn('[X] queryId live refresh failed, using baked-in fallback:', e?.message || e);
+        console.warn('[X] live operation refresh failed, using baked-in fallback:', e?.message || e);
     }
-    return cachedQueryId || CREATE_TWEET_QUERY_ID;
+    return cachedOp; // may be null → caller uses baked-in constants
 }
 
 async function getCsrfToken() {
@@ -262,65 +332,29 @@ async function createTweet(text, mediaIds, csrf) {
         semantic_annotation_ids: [],
     };
 
-    // X validates that EVERY feature switch declared by the CreateTweet
-    // operation is present (non-null). Values don't affect whether the tweet is
-    // created, so we mirror the live list and set them all true. Synced from
-    // X's client bundle (see note by CREATE_TWEET_QUERY_ID).
-    const features = {
-        premium_content_api_read_enabled: true,
-        communities_web_enable_tweet_community_results_fetch: true,
-        c9s_tweet_anatomy_moderator_badge_enabled: true,
-        responsive_web_grok_analyze_button_fetch_trends_enabled: true,
-        responsive_web_grok_analyze_post_followups_enabled: true,
-        rweb_cashtags_composer_attachment_enabled: true,
-        responsive_web_jetfuel_frame: true,
-        responsive_web_grok_share_attachment_enabled: true,
-        responsive_web_grok_annotations_enabled: true,
-        responsive_web_edit_tweet_api_enabled: true,
-        rweb_conversational_replies_downvote_enabled: true,
-        graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
-        view_counts_everywhere_api_enabled: true,
-        longform_notetweets_consumption_enabled: true,
-        responsive_web_twitter_article_tweet_consumption_enabled: true,
-        content_disclosure_indicator_enabled: true,
-        content_disclosure_ai_generated_indicator_enabled: true,
-        responsive_web_grok_show_grok_translated_post: true,
-        responsive_web_grok_analysis_button_from_backend: true,
-        post_ctas_fetch_enabled: true,
-        longform_notetweets_rich_text_read_enabled: true,
-        longform_notetweets_inline_media_enabled: true,
-        profile_label_improvements_pcf_label_in_post_enabled: true,
-        responsive_web_profile_redirect_enabled: true,
-        rweb_tipjar_consumption_enabled: true,
-        verified_phone_label_enabled: true,
-        articles_preview_enabled: true,
-        rweb_cashtags_enabled: true,
-        responsive_web_grok_community_note_auto_translation_is_enabled: true,
-        responsive_web_graphql_skip_user_profile_image_extensions_enabled: true,
-        freedom_of_speech_not_reach_fetch_enabled: true,
-        standardized_nudges_misinfo: true,
-        tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
-        responsive_web_grok_image_annotation_enabled: true,
-        responsive_web_grok_imagine_annotation_enabled: true,
-        responsive_web_graphql_timeline_navigation_enabled: true,
-    };
+    // Resolve the CreateTweet operation as a MATCHED SET (queryId + the exact
+    // featureSwitches + fieldToggles it declares). Prefer the live bundle; fall
+    // back to the baked-in constants. Mixing a live queryId with stale feature
+    // names is what produces 422 GRAPHQL_VALIDATION_FAILED, so they must come
+    // from the same source.
+    const op = await fetchCreateTweetOp();
+    const queryId = op?.queryId || CREATE_TWEET_QUERY_ID;
+    const featureNames = op?.featureNames?.length ? op.featureNames : CREATE_TWEET_FEATURE_NAMES;
+    const fieldToggleNames = op?.fieldToggleNames?.length ? op.fieldToggleNames : CREATE_TWEET_FIELD_TOGGLE_NAMES;
 
-    // Newer CreateTweet also requires fieldToggles to be present (non-null).
-    // We post plain text/image tweets, so all article/grok toggles are false.
-    const fieldToggles = {
-        withArticleRichContentState: false,
-        withArticlePlainText: false,
-        withArticleSummaryText: false,
-        withArticleVoiceOver: false,
-        withGrokAnalyze: false,
-        withDisallowedReplyControls: false,
-        withPayments: false,
-        withAuxiliaryUserLabels: false,
-    };
+    // X only checks these are present (non-null); values don't affect creation.
+    const features = Object.fromEntries(featureNames.map(n => [n, true]));
+    // We post plain text/image tweets → all article/grok/payment toggles false.
+    const fieldToggles = Object.fromEntries(fieldToggleNames.map(n => [n, false]));
 
-    const queryId = await fetchCreateTweetQueryId();
     const url = `${X_API_BASE}/graphql/${queryId}/CreateTweet`;
-    console.log('[X] CreateTweet POST', { queryIdPrefix: queryId.slice(0, 6) + '...', textLen: text?.length, mediaCount: (mediaIds || []).length });
+    console.log('[X] CreateTweet POST', {
+        queryIdPrefix: queryId.slice(0, 6) + '...',
+        source: op ? 'live-bundle' : 'baked-in',
+        featureCount: featureNames.length,
+        textLen: text?.length,
+        mediaCount: (mediaIds || []).length,
+    });
     const res = await xFetch(url, {
         method: 'POST',
         body: JSON.stringify({ variables, features, fieldToggles, queryId }),
