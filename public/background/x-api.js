@@ -415,6 +415,13 @@ async function createTweet(text, mediaIds, csrf, cfg) {
     if (data.errors?.length) {
         const e = data.errors[0];
         console.error('[X] CreateTweet returned errors:', data.errors);
+        // Code 226 = X anti-automation. The request authenticated and validated
+        // fine; X blocked it because the拡張機能 cannot attach the per-request
+        // `x-client-transaction-id` header that X's own web client computes in the
+        // page. (VRChat投稿は成功しているので status は partial 扱い。)
+        if (e.code === 226) {
+            throw new Error('X側の自動化対策でブロックされました (code 226)。Xが要求する x-client-transaction-id ヘッダを拡張機能から付与できていないためです。VRChat投稿は成功しています。X投稿の恒久対応は方針検討中です。');
+        }
         throw new Error(`X CreateTweet失敗 (code ${e.code ?? 'n/a'}): ${e.message || JSON.stringify(e)}`);
     }
     if (!data.data?.create_tweet) {
