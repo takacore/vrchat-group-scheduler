@@ -432,6 +432,141 @@ async function createTweet(text, mediaIds, csrf, cfg) {
     return data;
 }
 
+// ---------------------------------------------------------------------------
+// X anti-automation (code 226) bypass via the page's own fetch.
+//
+// X wraps window.fetch in its web bundle and attaches a per-request
+// `x-client-transaction-id` header that the extension's Service Worker (native
+// fetch) cannot compute. Posting straight from the SW therefore gets 226.
+//
+// Fix: run the post FROM an x.com page (MAIN world) so X's wrapped fetch adds the
+// header for us. We reuse an open x.com tab when present, otherwise open a
+// transient background tab and close it afterwards — so scheduled posts work even
+// when the user has no x.com tab open.
+// ---------------------------------------------------------------------------
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function findXTab() {
+    try {
+        const tabs = await chrome.tabs.query({ url: 'https://x.com/*' });
+        return tabs.find(t => t.status === 'complete') || tabs[0] || null;
+    } catch {
+        return null;
+    }
+}
+
+function waitTabComplete(tabId, timeoutMs = 20000) {
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+            if (done) return; done = true;
+            try { chrome.tabs.onUpdated.removeListener(listener); } catch { }
+            resolve();
+        };
+        const listener = (id, info) => { if (id === tabId && info.status === 'complete') finish(); };
+        try { chrome.tabs.onUpdated.addListener(listener); } catch { }
+        setTimeout(finish, timeoutMs);
+    });
+}
+
+// Runs in the x.com page MAIN world. window.fetch here is X's wrapped fetch,
+// which attaches x-client-transaction-id. Fully self-contained (executeScript
+// stringifies it — no closures over module scope). Returns a serializable result.
+async function xRelayInjected(payload) {
+    try {
+        const { text, imageDataUrl, bearer, csrf, queryId, features, fieldToggles, lang } = payload;
+        const UP = 'https://upload.x.com/i/media/upload.json';
+        const base = {
+            'authorization': 'Bearer ' + bearer,
+            'x-csrf-token': csrf,
+            'x-twitter-auth-type': 'OAuth2Session',
+            'x-twitter-active-user': 'yes',
+            'x-twitter-client-language': lang || 'en',
+        };
+        const mediaIds = [];
+        if (imageDataUrl) {
+            const blob = await (await fetch(imageDataUrl)).blob();
+            const init = await fetch(UP, {
+                method: 'POST', credentials: 'include',
+                headers: { ...base, 'content-type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ command: 'INIT', total_bytes: String(blob.size), media_type: blob.type || 'image/png', media_category: 'tweet_image' }),
+            });
+            if (!init.ok) return { ok: false, error: 'media INIT ' + init.status + ': ' + (await init.text()).slice(0, 150) };
+            const mediaId = (await init.json()).media_id_string;
+            const fd = new FormData();
+            fd.append('command', 'APPEND'); fd.append('media_id', mediaId); fd.append('segment_index', '0'); fd.append('media', blob);
+            const ap = await fetch(UP, { method: 'POST', credentials: 'include', headers: base, body: fd });
+            if (!ap.ok) return { ok: false, error: 'media APPEND ' + ap.status };
+            const fin = await fetch(UP, {
+                method: 'POST', credentials: 'include',
+                headers: { ...base, 'content-type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ command: 'FINALIZE', media_id: mediaId }),
+            });
+            const finData = await fin.json().catch(() => ({}));
+            if (finData.errors?.length) return { ok: false, error: 'media FINALIZE: ' + (finData.errors[0].message || '') };
+            mediaIds.push(mediaId);
+        }
+        const variables = {
+            tweet_text: text || '',
+            dark_request: false,
+            media: { media_entities: mediaIds.map(id => ({ media_id: id, tagged_users: [] })), possibly_sensitive: false },
+            semantic_annotation_ids: [],
+        };
+        const r = await fetch('https://api.x.com/graphql/' + queryId + '/CreateTweet', {
+            method: 'POST', credentials: 'include',
+            headers: { ...base, 'content-type': 'application/json' },
+            body: JSON.stringify({ variables, features, fieldToggles, queryId }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (data.errors?.length) {
+            const e = data.errors[0];
+            return { ok: false, code: e.code, error: 'CreateTweet code ' + (e.code ?? '?') + ': ' + (e.message || '') };
+        }
+        if (!data.data?.create_tweet) return { ok: false, error: 'CreateTweet 予期しないレスポンス' };
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: (e && e.message) || String(e) };
+    }
+}
+
+async function postViaRelay(payload) {
+    if (!(chrome.scripting && chrome.scripting.executeScript)) {
+        throw new Error('X投稿の中継に必要な scripting 権限がありません。拡張機能を再読み込みしてください。');
+    }
+    let tab = await findXTab();
+    let created = false;
+    if (!tab) {
+        console.log('[X] no x.com tab open; opening a transient background tab for relay');
+        tab = await chrome.tabs.create({ url: 'https://x.com/home', active: false });
+        created = true;
+        await waitTabComplete(tab.id);
+        await delay(2500); // let X's client install its fetch wrapper
+    } else {
+        console.log('[X] relaying via existing x.com tab', tab.id);
+    }
+    try {
+        const results = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world: 'MAIN',
+            func: xRelayInjected,
+            args: [payload],
+        });
+        const out = results && results[0] && results[0].result;
+        if (!out) throw new Error('X投稿の中継に失敗しました（x.comページで実行できませんでした）。');
+        if (!out.ok) {
+            if (out.code === 226) {
+                throw new Error('X側の自動化対策でブロックされました (code 226)。x.comページ経由でも拒否されたため、アカウントが一時的に制限されている可能性があります。VRChat投稿は成功しています。');
+            }
+            throw new Error('X投稿失敗: ' + out.error);
+        }
+        console.log('[X] relay post success');
+        return out;
+    } finally {
+        if (created) { try { await chrome.tabs.remove(tab.id); } catch { } }
+    }
+}
+
 export const xApi = {
     async checkLogin() {
         try {
@@ -458,28 +593,28 @@ async function postInner(text, imageDataUrl = null) {
     const csrf = await getCsrfToken();
     await getAuthToken();
 
-    // Resolve live client config (bearer + CreateTweet op) BEFORE installing
-    // the header rule / uploading media, so the bearer is ready for every
-    // request in this post. The bearer is mandatory and never hard-coded: if
-    // we can't read it from X's bundle, refuse to post with a clear error.
+    // Resolve the live client config (bearer + CreateTweet op as a matched set).
+    // The bearer is mandatory and never hard-coded.
     const cfg = await fetchXConfig();
     if (!cfg.bearer) {
         throw new Error('X の認証トークン(bearer)を取得できませんでした。x.com に接続できるか、ログイン状態を確認してください。');
     }
-    activeBearer = cfg.bearer;
+    const queryId = cfg.queryId || CREATE_TWEET_QUERY_ID;
+    const featureNames = cfg.featureNames?.length ? cfg.featureNames : CREATE_TWEET_FEATURE_NAMES;
+    const fieldToggleNames = cfg.fieldToggleNames?.length ? cfg.fieldToggleNames : CREATE_TWEET_FIELD_TOGGLE_NAMES;
+    const features = Object.fromEntries(featureNames.map(n => [n, true]));
+    const fieldToggles = Object.fromEntries(fieldToggleNames.map(n => [n, false]));
 
-    return withXHeaders(async () => {
-        const mediaIds = [];
-        if (imageDataUrl) {
-            const fetchRes = await fetch(imageDataUrl);
-            const blob = await fetchRes.blob();
-            const mimeType = blob.type || 'image/png';
-            console.log('[X] uploading media', { size: blob.size, mimeType });
-            const mediaId = await uploadMediaChunked(blob, mimeType, csrf);
-            console.log('[X] media uploaded', { mediaId });
-            mediaIds.push(mediaId);
-        }
-
-        return createTweet(text || '', mediaIds, csrf, cfg);
+    // Post via an x.com page so X's wrapped fetch supplies x-client-transaction-id
+    // (the SW's native fetch cannot, which is what triggers the 226 block).
+    return postViaRelay({
+        text: text || '',
+        imageDataUrl: imageDataUrl || null,
+        bearer: cfg.bearer,
+        csrf,
+        queryId,
+        features,
+        fieldToggles,
+        lang: 'ja',
     });
 }
