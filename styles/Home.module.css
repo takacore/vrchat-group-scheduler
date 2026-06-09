@@ -1,0 +1,938 @@
+/*
+ * VRChat Group Notify Scheduler — refined dark theme.
+ * Cool-slate ramp, structure via 1px hairlines (not heavy shadows),
+ * and ONE disciplined indigo accent reserved for primary actions / focus.
+ * Design tokens are defined on :root in the injected <style> block in pages/index.jsx.
+ */
+
+.container {
+    min-height: 100vh;
+    padding: 16px;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    min-width: 700px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text);
+}
+
+.userInfo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--border);
+}
+
+.username {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+
+@media (min-width: 768px) {
+    .container {
+        padding: 24px;
+    }
+
+    .grid {
+        grid-template-columns: 1fr 2fr;
+        gap: 24px;
+    }
+
+    .card {
+        padding: 20px;
+    }
+}
+
+.card {
+    background-color: var(--surface);
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
+}
+
+.cardTitle {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+}
+
+.formGroup {
+    margin-bottom: 14px;
+}
+
+.label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text-muted);
+}
+
+/* Reusable helper / constraint text under fields */
+.helper {
+    font-size: 12px;
+    color: var(--text-subtle);
+    margin-top: 6px;
+}
+
+.input,
+.textarea,
+.select {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background-color: var(--well);
+    color: var(--text);
+    font-size: 14px;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+    color: var(--text-subtle);
+}
+
+.input:hover,
+.textarea:hover,
+.select:hover {
+    border-color: var(--border-strong);
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.textarea {
+    resize: vertical;
+    min-height: 96px;
+    line-height: 1.5;
+}
+
+.button {
+    width: 100%;
+    min-height: 40px;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: none;
+    background-color: var(--accent);
+    color: var(--on-accent);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.button:hover {
+    background-color: var(--accent-hover);
+}
+
+.button:active {
+    background-color: var(--accent-pressed);
+}
+
+.postList {
+    display: flex;
+    flex-direction: column;
+}
+
+.postItem {
+    background-color: transparent;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.12s ease;
+}
+
+.postItem:last-child {
+    border-bottom: none;
+}
+
+.postItem:hover {
+    background-color: var(--surface-2);
+}
+
+@media (min-width: 768px) {
+    .postItem {
+        padding: 12px 14px;
+    }
+}
+
+.postInfo {
+    flex: 1;
+    min-width: 0;
+}
+
+.postTitle {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+    margin-bottom: 2px;
+    color: var(--text);
+}
+
+.postMeta {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-feature-settings: 'tnum';
+}
+
+/* Status pills: tinted-translucent chips, not solid blocks */
+.status {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+
+.statusPending {
+    color: var(--status-pending-fg);
+    background-color: var(--status-pending-bg);
+}
+
+.statusPosted {
+    color: var(--status-posted-fg);
+    background-color: var(--status-posted-bg);
+}
+
+.statusFailed {
+    color: var(--status-failed-fg);
+    background-color: var(--status-failed-bg);
+}
+
+.statusMissed {
+    color: var(--status-neutral-fg);
+    background-color: var(--status-neutral-bg);
+}
+
+.statusDeleted {
+    color: var(--status-neutral-fg);
+    background-color: var(--status-neutral-bg);
+    text-decoration: line-through;
+}
+
+/* New: recurring posts (status:'recurring' had no pill before — only an inline bg) */
+.statusRecurring {
+    color: var(--status-recurring-fg);
+    background-color: var(--status-recurring-bg);
+}
+
+/* Trailing row actions — quiet ghost buttons that only color on hover */
+.deleteBtn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-left: 4px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    line-height: 1;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.deleteBtn:hover {
+    color: var(--danger);
+    background-color: rgba(229, 62, 62, 0.12);
+}
+
+.retryBtn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-left: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    line-height: 1;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.retryBtn:hover {
+    color: var(--text);
+    background-color: var(--surface-2);
+}
+
+/* Inline ghost badges (Repeat / IMG / X are styled in JSX; this remains for reuse) */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid var(--badge-border);
+    color: var(--badge-text);
+    background: transparent;
+}
+
+.errorBanner {
+    background-color: var(--status-failed-bg);
+    color: #fca5a5;
+    padding: 0.85rem 1rem;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    border: 1px solid rgba(229, 62, 62, 0.35);
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.closeError {
+    background: none;
+    border: none;
+    color: inherit;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 1.2rem;
+    opacity: 0.8;
+}
+
+.closeError:hover {
+    opacity: 1;
+}
+
+.trashToggle {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-left: 1rem;
+    transition: all 0.15s ease;
+}
+
+.trashToggle:hover {
+    border-color: var(--border-strong);
+    color: var(--text-secondary);
+}
+
+.trashToggleActive {
+    background-color: var(--surface-2);
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+
+/* Update Banner — quiet surface card with an accent edge */
+.updateBanner {
+    background-color: var(--surface);
+    color: var(--text);
+    padding: 1rem 1.25rem;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    animation: slideDown 0.3s ease-out;
+    box-shadow: var(--shadow-card);
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.updateBannerInfo {
+    flex: 1;
+    min-width: 0;
+}
+
+.updateBannerTitle {
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text);
+}
+
+.updateBannerMeta {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.updateBannerActions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.updateDownloadBtn {
+    background-color: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: background-color 0.15s ease;
+}
+
+.updateDownloadBtn:hover {
+    background-color: var(--accent-hover);
+}
+
+.updateDismissBtn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.15s ease;
+}
+
+.updateDismissBtn:hover {
+    border-color: var(--border-strong);
+    color: var(--text-secondary);
+}
+
+.betaBadge {
+    background-color: var(--warn);
+    color: var(--bg);
+    font-size: 0.65rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Settings Button (also base for the header ghost icons) */
+.settingsBtn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    margin-right: 1rem;
+}
+
+.settingsBtn:hover {
+    background-color: var(--surface-2);
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+
+/* Overlays */
+.settingsOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--overlay);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.settingsModal {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.75rem;
+    width: 90%;
+    max-width: 450px;
+    box-shadow: var(--shadow-elevated);
+    animation: modalSlide 0.3s ease-out;
+}
+
+@keyframes modalSlide {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.settingsTitle {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.settingsGroup {
+    margin-bottom: 1.25rem;
+}
+
+.settingsLabel {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+}
+
+.settingsSelect {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background-color: var(--well);
+    color: var(--text);
+    font-size: 14px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.settingsSelect:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.settingsCheckbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.settingsActions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+}
+
+.settingsSaveBtn {
+    flex: 1;
+    padding: 0.7rem;
+    border-radius: 6px;
+    border: none;
+    background-color: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.settingsSaveBtn:hover {
+    background-color: var(--accent-hover);
+}
+
+.settingsCloseBtn {
+    padding: 0.7rem 1.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.settingsCloseBtn:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+
+.settingsCheckBtn {
+    width: 100%;
+    padding: 0.7rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--accent-hover);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.15s ease;
+    margin-top: 0.5rem;
+}
+
+.settingsCheckBtn:hover {
+    background-color: var(--accent-tint);
+    border-color: var(--border-strong);
+}
+
+.settingsCheckBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.settingsResult {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+}
+
+.settingsResultOk {
+    background-color: var(--status-posted-bg);
+    color: var(--ok);
+    border: 1px solid rgba(56, 161, 105, 0.3);
+}
+
+.settingsResultUpdate {
+    background-color: var(--accent-tint);
+    color: var(--accent-hover);
+    border: 1px solid rgba(110, 121, 240, 0.3);
+}
+
+.settingsResultError {
+    background-color: var(--status-failed-bg);
+    color: var(--danger);
+    border: 1px solid rgba(229, 62, 62, 0.3);
+}
+
+.versionInfo {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-right: 0.75rem;
+    font-feature-settings: 'tnum';
+}
+
+/* Group Scan Modal */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--overlay);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modalContent {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.75rem;
+    width: 90%;
+    max-width: 420px;
+    box-shadow: var(--shadow-elevated);
+    animation: modalSlide 0.3s ease-out;
+}
+
+.modalTitle {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 1rem;
+}
+
+.modalText {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+}
+
+.modalActions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.scanStartBtn {
+    padding: 0.65rem 1.5rem;
+    border-radius: 6px;
+    border: none;
+    background-color: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.15s ease;
+}
+
+.scanStartBtn:hover {
+    background-color: var(--accent-hover);
+}
+
+/* Scan Progress */
+.scanProgressContainer {
+    margin-top: 0.5rem;
+}
+
+.scanProgressBar {
+    width: 100%;
+    height: 6px;
+    background-color: var(--well);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+}
+
+.scanProgressFill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+    border-radius: 999px;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+
+.scanProgressFillWaiting {
+    background: linear-gradient(90deg, #d69e2e, var(--warn));
+}
+
+.scanProgressInfo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    min-height: 1.2rem;
+}
+
+.scanProgressCount {
+    font-weight: 600;
+    color: var(--accent-hover);
+    flex-shrink: 0;
+    font-feature-settings: 'tnum';
+}
+
+.scanProgressName {
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-left: 1rem;
+    max-width: 250px;
+}
+
+/* Toast Notification — compact floating chip with an intent stripe */
+.toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    padding: 0.75rem 1.25rem;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    z-index: 1200;
+    background-color: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-elevated);
+    animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 2.7s forwards;
+    max-width: 360px;
+}
+
+.toastSuccess {
+    border-left: 3px solid var(--ok);
+}
+
+.toastSuccess > span:first-child {
+    color: var(--ok);
+}
+
+.toastError {
+    border-left: 3px solid var(--danger);
+}
+
+.toastError > span:first-child {
+    color: var(--danger);
+}
+
+.toastClose {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 1.1rem;
+    cursor: pointer;
+    opacity: 0.6;
+    margin-left: 0.5rem;
+    padding: 0;
+    line-height: 1;
+}
+
+.toastClose:hover {
+    opacity: 1;
+}
+
+@keyframes toastIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes toastOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+}
+
+/* Confirm Dialog */
+.confirmActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.confirmCancelBtn {
+    padding: 0.6rem 1.25rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.15s ease;
+}
+
+.confirmCancelBtn:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+
+.confirmOkBtn {
+    padding: 0.6rem 1.25rem;
+    border-radius: 6px;
+    border: none;
+    background-color: var(--danger);
+    color: var(--bg);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: filter 0.15s ease;
+}
+
+.confirmOkBtn:hover {
+    filter: brightness(1.08);
+}
+
+/* Empty state for the Scheduled Queue */
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 16px;
+    gap: 8px;
+}
+
+.emptyStateIcon {
+    font-size: 32px;
+    opacity: 0.5;
+    line-height: 1;
+}
+
+.emptyStateTitle {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.emptyStateHint {
+    font-size: 12px;
+    color: var(--text-subtle);
+}
