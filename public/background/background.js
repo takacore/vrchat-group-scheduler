@@ -2,7 +2,6 @@
 import { api } from './api.js';
 import { storage } from './storage.js';
 import { scheduler } from './scheduler.js';
-import { xApi, clearXHeaderRule } from './x-api.js';
 
 // Only ever turn a data:image/ URL into a blob. This prevents an imported
 // backup (or any crafted post) from making the SW fetch an arbitrary URL.
@@ -91,11 +90,26 @@ async function updatePostById(postId, mutate) {
     return { found: true, written: true, status: posts[i].status };
 }
 
+// v2.2.0-rc.6 no longer supports X cross-posting. Remove those obsolete fields
+// from existing local records as well as from imported backups, so subsequent
+// backups contain only data used by the VRChat scheduler.
+async function removeLegacyXFields() {
+    const { posts } = await storage.get(['posts']);
+    if (!Array.isArray(posts)) return;
+    let changed = false;
+    for (const post of posts) {
+        for (const field of ['postToX', 'xText', 'xError']) {
+            if (Object.hasOwn(post, field)) {
+                delete post[field];
+                changed = true;
+            }
+        }
+    }
+    if (changed) await storage.set({ posts });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
     console.log('VRChat Group Scheduler Extension Installed');
-
-    // 前回セッションで残った可能性のあるX用ヘッダルールを掃除
-    clearXHeaderRule();
 
     // Initialize storage if empty
     storage.get(['posts']).then(result => {
@@ -103,12 +117,11 @@ chrome.runtime.onInstalled.addListener(() => {
             storage.set({ posts: [] });
         }
     });
+    removeLegacyXFields().catch(error => console.warn('Failed to remove legacy X fields:', error));
 });
 
-// 起動時にも残留 session rule を必ず除去（古いCookieスナップショットでX宛XHRを
-// 上書きし続けるのを防ぐ。MV3 session rule は SW ライフサイクルと独立に残るため）
 chrome.runtime.onStartup.addListener(() => {
-    clearXHeaderRule();
+    removeLegacyXFields().catch(error => console.warn('Failed to remove legacy X fields:', error));
 });
 
 // Alarm Listener
@@ -128,7 +141,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     // Only act on a post that is genuinely awaiting a run. Anything else (deleted,
     // or a terminal completed/partial/failed/missed one-shot) means this alarm is
     // stale — e.g. a leftover alarm after a backup import overwrote the post's
-    // state. Re-posting it would create a duplicate VRChat/X post, so refuse.
+    // state. Re-posting it would create a duplicate VRChat post, so refuse.
     if (post.status !== 'pending' && post.status !== 'recurring') {
         console.warn(`Post ${postId} status='${post.status}' is not schedulable; clearing stale alarm.`);
         await scheduler.removeJob(postId);
@@ -137,8 +150,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
     const isRecurring = !!post.recurrence;
     let vrcImageError = null;
-    let xError = null;
-    let xResultOk = true;
     let hardError = null;
 
     try {
@@ -157,26 +168,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         const result = await api.createGroupPost(post.groupId, post.title, post.text, post.sendNotification, imageId);
         console.log('Post successful:', result);
 
-        if (post.postToX) {
-            console.log('[Scheduler] post.postToX=true, attempting X post...');
-            try {
-                const xText = post.xText || `${post.title}\n\n${post.text}`;
-                await xApi.post(xText, post.imageDataUrl || null);
-                console.log('[Scheduler] X post completed');
-            } catch (xErr) {
-                xResultOk = false;
-                xError = xErr.message;
-                console.error('[Scheduler] X(Twitter) post failed:', xErr);
-            }
-        } else {
-            console.log('[Scheduler] post.postToX falsy, skipping X');
-        }
     } catch (error) {
         hardError = error.message;
         console.error('Failed to post:', error);
     }
 
-    const fullySuccess = !hardError && xResultOk && !vrcImageError;
+    const fullySuccess = !hardError && !vrcImageError;
 
     // For recurring posts, compute the next fire time so the schedule continues
     // even if this run failed (a transient failure must not kill the series).
@@ -209,7 +206,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         }
         // Record / clear last-run diagnostics.
         if (hardError) p.error = hardError; else delete p.error;
-        if (xError) p.xError = xError; else delete p.xError;
         if (vrcImageError) p.vrcImageError = vrcImageError; else delete p.vrcImageError;
         return true;
     });
@@ -237,7 +233,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     } else {
         const issues = [];
         if (vrcImageError) issues.push('画像添付失敗');
-        if (xError) issues.push('X投稿失敗');
         chrome.notifications.create({
             type: 'basic',
             iconUrl: chrome.runtime.getURL('icons/icon128.png'),
@@ -246,7 +241,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
                 : `投稿完了（${issues.join(' / ')}）`,
             message: fullySuccess
                 ? `Successfully posted to group: ${post.groupName || post.groupId}`
-                : `VRChat投稿はOK。${vrcImageError ? '画像: ' + vrcImageError + '. ' : ''}${xError ? 'X: ' + xError : ''}`
+                : `VRChat投稿はOK。${vrcImageError ? '画像: ' + vrcImageError : ''}`
         });
     }
 });
@@ -344,10 +339,8 @@ function sanitizeImportedPost(p) {
         scheduledAt: str(p.scheduledAt, 40),
         created_at: str(p.created_at, 40) || new Date().toISOString(),
         sendNotification: !!p.sendNotification,
-        postToX: !!p.postToX,
         status: ALLOWED_STATUS.has(p.status) ? p.status : 'pending',
     };
-    if (typeof p.xText === 'string') clean.xText = p.xText.slice(0, 1000);
     if (typeof p.imageName === 'string') clean.imageName = p.imageName.slice(0, 300);
     // Only accept reasonably-sized data:image/ payloads; drop anything else
     // (e.g. http(s) URLs) and over-large blobs that would bloat storage.
@@ -373,7 +366,6 @@ function sanitizeImportedPost(p) {
         if (typeof p.lastRunAt === 'string') clean.lastRunAt = p.lastRunAt.slice(0, 40);
         if (ALLOWED_LASTRESULT.has(p.lastResult)) clean.lastResult = p.lastResult;
         if (typeof p.error === 'string') clean.error = p.error.slice(0, 500);
-        if (typeof p.xError === 'string') clean.xError = p.xError.slice(0, 500);
         if (typeof p.vrcImageError === 'string') clean.vrcImageError = p.vrcImageError.slice(0, 500);
     }
     return clean;
@@ -403,7 +395,7 @@ async function importPosts(incoming) {
     // CRITICAL: clear every pre-existing alarm for the merged posts BEFORE
     // re-arming. Otherwise a stale alarm from a prior schedule (e.g. an id that
     // import just overwrote with a terminal/one-shot post) would survive and
-    // re-fire, producing a DUPLICATE VRChat/X post. We then arm only the posts
+    // re-fire, producing a duplicate VRChat post. We then arm only the posts
     // that legitimately qualify below.
     for (const p of merged) {
         await scheduler.removeJob(p.id);
@@ -459,13 +451,8 @@ async function handleApiCall({ action, params }) {
             return api.refreshUserGroups(params.userId);
         case 'getGroup':
             return api.getGroup(params.groupId);
-        case 'xCheckLogin':
-            return xApi.checkLogin();
-        case 'xPostNow': {
-            const { text, imageDataUrl } = params || {};
-            return xApi.post(text, imageDataUrl || null);
-        }
         default:
             throw new Error(`Unknown action: ${action}`);
     }
 }
+
