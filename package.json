@@ -2,7 +2,7 @@
   "private": true,
   "name": "vrchat-group-notify-scheduler",
   "description": "VRChat Group Notify Scheduler Extension",
-  "version": "2.2.0-rc.8",
+  "version": "2.2.0",
   "author": "TakaAizu",
   "scripts": {
     "dev": "next dev",
@@ -10,7 +10,7 @@
     "verify": "node fix-extension.js"
   },
   "dependencies": {
-    "next": "^14.2.4",
+    "next": "^16.3.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   }

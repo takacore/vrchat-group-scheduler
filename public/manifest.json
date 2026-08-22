@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "VRChat Group Notify Scheduler",
-    "version": "2.2.0.8",
+    "version": "2.2.0",
     "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA704IExyHjoakv4NEwM9KiyYNW/nh66a3P8P+xNqx3V3C/qRiDGaWusI4iIK6OhZeQE1qyRWjSZJY83IC8/Amxt4dSYwfib1JJE8xcE4QxYOBjV4sf97zpymyz4v7EgYmAMWDS9icEMiIIj6ne6UMioCIe2c1zg2oLIPgE5ZVUxZ2VVqf3uGe58+a5nZ/c8uc+KXn3ZKPSo9LJ9iwCkOEPhwC4XxKNes0GSJCkT5eZ3r0c4l6ne6CabQmPWREiNVZMHE99Qam/NM2pmp77O8SYqhvCOJk3wknjW49STF/6MVqKdaFe81mnoVI3VTxxMKmsGkWqqs1J523pV9DN5+zJQIDAQAB",
     "description": "Schedule and automate group announcements on VRChat.",
     "permissions": [
