@@ -80,15 +80,6 @@ export const invokeBackend = async (action, payload = {}) => {
                     }
                 });
 
-            case 'x:check-login':
-                type = 'API_CALL';
-                payload = { action: 'xCheckLogin' };
-                break;
-            case 'x:post-now':
-                type = 'API_CALL';
-                payload = { action: 'xPostNow', params: payload };
-                break;
-
             // Ignore updater actions
             case 'updater:get-settings':
             case 'updater:save-settings':

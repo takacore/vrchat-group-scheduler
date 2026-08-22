@@ -3,7 +3,7 @@
 VRChat Group Notify Scheduler — a **Manifest V3 Chrome extension** built with
 Next.js (static export). The popup/full-page UI lives in `pages/index.jsx`
 (+ `styles/*.module.css`); the background service worker and APIs live under
-`public/background/` (`background.js`, `api.js`, `x-api.js`).
+`public/background/` (`background.js`, `api.js`, `scheduler.js`).
 
 ## Building the extension — READ THIS FIRST
 
@@ -33,8 +33,8 @@ success, and **exit non-zero** if any `_`-prefixed path or a missing
 ### Load / test in Chrome
 
 `chrome://extensions` → enable **Developer mode** → **Load unpacked** → select
-the `out/` directory. X(Twitter) cross-posting and VRChat group fetching both
-require being logged into those sites in the same browser profile.
+the `out/` directory. VRChat group fetching requires being logged into VRChat
+in the same browser profile.
 
 ## Notes
 

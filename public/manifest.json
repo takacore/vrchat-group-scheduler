@@ -1,23 +1,17 @@
 {
     "manifest_version": 3,
     "name": "VRChat Group Notify Scheduler",
-    "version": "2.2.0.5",
+    "version": "2.2.0.6",
     "description": "Schedule and automate group announcements on VRChat.",
     "permissions": [
         "storage",
         "unlimitedStorage",
         "alarms",
         "cookies",
-        "notifications",
-        "scripting",
-        "declarativeNetRequestWithHostAccess"
+        "notifications"
     ],
     "host_permissions": [
-        "https://vrchat.com/*",
-        "https://api.x.com/*",
-        "https://x.com/*",
-        "https://upload.x.com/*",
-        "https://abs.twimg.com/*"
+        "https://vrchat.com/*"
     ],
     "background": {
         "service_worker": "background/background.js",

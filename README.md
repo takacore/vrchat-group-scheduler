@@ -1,7 +1,7 @@
 # VRChat Group Notify Scheduler (Chrome 拡張機能 / MV3)
 
 VRChatのグループお知らせ（Announcement）を予約投稿するための **Chrome 拡張機能（Manifest V3）** です。
-お好みで、同じ内容を **X(Twitter) へ同時投稿**したり、投稿に**画像を添付**することもできます。
+投稿に**画像を添付**することもできます。
 
 > 旧バージョンは Electron デスクトップアプリでしたが、現在は Chrome 拡張機能に移行しています。本READMEは現行のMV3拡張の挙動を説明します。
 
@@ -20,7 +20,6 @@ https://drive.google.com/file/d/19oLJXNCheJwVyDH7iHtjL9J8E4tvRUyE/preview
 - **予約投稿**: 日時を指定してお知らせを予約。`chrome.alarms` により指定時刻に自動投稿します。
 - **定期投稿**: 毎日 / 毎週（曜日指定） / 毎月の繰り返しに対応。発火後に次回を自動で再スケジュールします。
 - **画像添付（任意）**: VRChat の画像付き投稿に対応（後述の制限あり）。
-- **X(Twitter) 同時投稿（任意）**: テキスト／画像を X にも投稿。X 側のログインセッションを利用します。
 - **バックアップ / 復元**: 予約投稿を JSON にエクスポート／インポート。更新時や別PCへの移行でデータを引き継げます。
 - **グループ権限スキャン**: 参加グループのうち、お知らせ投稿権限のあるグループを抽出（結果はキャッシュ）。
 
@@ -28,24 +27,20 @@ https://drive.google.com/file/d/19oLJXNCheJwVyDH7iHtjL9J8E4tvRUyE/preview
 
 正直なところを明記します。旧Electron版の「OSキーチェーンで暗号化」「データは一切外部に出ない」といった説明は、**この拡張機能には当てはまりません**。
 
-- **認証はブラウザのログインセッションに依存**します。拡張機能はパスワードを受け取らず保存もしません。VRChat / X に**ブラウザでログイン済み**であることが前提で、リクエスト時に該当ドメインの Cookie を読み取って使用します。
+- **認証はブラウザのログインセッションに依存**します。拡張機能はパスワードを受け取らず保存もしません。VRChat に**ブラウザでログイン済み**であることが前提です。
 - **予約データの保存先は `chrome.storage.local`（平文）** です。OSキーチェーン等による暗号化は行っていません。添付画像は base64 として同ストレージに保存されます（このため `unlimitedStorage` 権限を使用）。
-- **「外部に出ない」わけではありません**: 本来の目的どおり、投稿内容は **VRChat API（`vrchat.com`）** へ送信されます。X 同時投稿を有効にした場合は **X（`api.x.com` / `upload.x.com`）** にも送信されます。これら以外の第三者サーバーへの送信・テレメトリは行いません。
-- **X 連携の仕組み**: X の Web クライアントが使う bearer / GraphQL の `CreateTweet` 定義を、X の公開バンドル（`abs.twimg.com`）から実行時に読み取り、あなたの X セッション Cookie で投稿します。bearer 等をソースに直書きはしていません。
+- **「外部に出ない」わけではありません**: 本来の目的どおり、投稿内容は **VRChat API（`vrchat.com`）** へ送信されます。これ以外の第三者サーバーへの送信・テレメトリは行いません。
 - Cookie やトークンを**ログ出力・外部送信することはありません**。
 
 ### 通信先（host_permissions）
-`vrchat.com` / `api.x.com` / `x.com` / `upload.x.com` / `abs.twimg.com` のみ。
+`vrchat.com` のみ。
 
 ### 使用権限（manifest）
-`storage`, `unlimitedStorage`, `alarms`, `cookies`, `notifications`, `declarativeNetRequestWithHostAccess`。
-`declarativeNetRequestWithHostAccess` は、拡張機能のバックグラウンドから X API へ投稿する際に、SameSite=Lax の Cookie を送るためのヘッダ注入に使用します（注入対象は `api.x.com` / `upload.x.com` のみ、処理中のみ有効化し直後に解除）。
+`storage`, `unlimitedStorage`, `alarms`, `cookies`, `notifications`。
 
 ## 制限・注意
 
-- **画像添付（VRChat側）には VRC+ サブスクライブが必要**です（`/file/image` の権限要件）。未加入の場合は画像なしで投稿を継続します（X 同時投稿の画像には影響しません）。VRChat 側は概ね 512×512px 以上を推奨。
-- **X 同時投稿には X(Twitter) へのブラウザログインが必要**です。
-- X は `CreateTweet` の queryId / feature flags を随時更新します。本拡張は実行時に追従しますが、X 側の大きな仕様変更時は一時的に投稿できなくなる可能性があります。
+- **画像添付（VRChat側）には VRC+ サブスクライブが必要**です（`/file/image` の権限要件）。未加入の場合は画像なしで投稿を継続します。VRChat 側は概ね 512×512px 以上を推奨。
 
 ## VRChat 利用規約への配慮
 VRChat の利用規約・ガイドラインに反しないよう、正規クライアントと同様の手順（Cookie セッション）でローカルに動作する設計です。
@@ -82,4 +77,4 @@ npm run dev   # Next.js 開発サーバ（UIの見た目確認用。chrome.* API
 - `chrome.alarms` によるスケジューリング
 
 ## 作者
-**TakaAizu** — https://x.com/TakaAizu
+**TakaAizu**
