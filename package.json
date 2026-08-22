@@ -2,7 +2,7 @@
   "private": true,
   "name": "vrchat-group-notify-scheduler",
   "description": "VRChat Group Notify Scheduler Extension",
-  "version": "2.2.0-rc.7",
+  "version": "2.2.0-rc.8",
   "author": "TakaAizu",
   "scripts": {
     "dev": "next dev",

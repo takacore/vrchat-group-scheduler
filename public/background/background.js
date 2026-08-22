@@ -304,6 +304,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             } else if (request.type === 'IMPORT_POSTS') {
                 const result = await importPosts(request.payload.posts || []);
                 sendResponse({ success: true, data: result });
+            } else if (request.type === 'EXPORT_BACKUP') {
+                const result = await exportBackup();
+                sendResponse({ success: true, data: result });
+            } else if (request.type === 'IMPORT_BACKUP') {
+                const result = await importBackup(request.payload || {});
+                sendResponse({ success: true, data: result });
             } else {
                 throw new Error(`Unknown message type: ${request.type}`);
             }
@@ -439,6 +445,68 @@ async function importPosts(incoming) {
     // Persist any scheduledAt advances made above.
     await storage.set({ posts: merged });
     return { total: merged.length, added, updated, skipped, rescheduled };
+}
+
+// Group permission caches are keyed by the VRChat user ID. Include only the
+// fields the UI needs, rather than serialising arbitrary API responses from
+// chrome.storage, and cap the size to keep imported backups bounded.
+const GROUP_CACHE_KEY = /^group-permissions-usr_[A-Za-z0-9-]{1,100}$/;
+const MAX_GROUP_CACHES = 10;
+const MAX_GROUPS_PER_CACHE = 500;
+
+function sanitizeGroupCaches(caches) {
+    if (!caches || typeof caches !== 'object' || Array.isArray(caches)) return {};
+    const cleanCaches = {};
+    for (const [key, cache] of Object.entries(caches)) {
+        if (Object.keys(cleanCaches).length >= MAX_GROUP_CACHES) break;
+        if (!GROUP_CACHE_KEY.test(key) || !cache || typeof cache !== 'object' || Array.isArray(cache)) continue;
+        const groups = {};
+        for (const [groupId, info] of Object.entries(cache.groups || {})) {
+            if (Object.keys(groups).length >= MAX_GROUPS_PER_CACHE) break;
+            if (typeof groupId !== 'string' || groupId.length > 100 || !info || typeof info !== 'object') continue;
+            const source = info.groupData && typeof info.groupData === 'object' ? info.groupData : {};
+            const name = str(info.name || source.name, 300);
+            const shortCode = str(info.shortCode || source.shortCode, 100);
+            groups[groupId] = {
+                name,
+                shortCode,
+                isOwner: !!info.isOwner,
+                hasPermission: !!info.hasPermission,
+                checkedAt: str(info.checkedAt, 40),
+                groupData: {
+                    id: str(source.id, 100) || groupId,
+                    groupId,
+                    name,
+                    shortCode,
+                },
+            };
+        }
+        cleanCaches[key] = {
+            lastFullCheck: str(cache.lastFullCheck, 40),
+            lastRefresh: str(cache.lastRefresh, 40),
+            groups,
+        };
+    }
+    return cleanCaches;
+}
+
+async function exportBackup() {
+    const all = await storage.get(null);
+    const groupCaches = {};
+    for (const [key, value] of Object.entries(all)) {
+        if (GROUP_CACHE_KEY.test(key)) groupCaches[key] = value;
+    }
+    return {
+        posts: Array.isArray(all.posts) ? all.posts : [],
+        groupCaches: sanitizeGroupCaches(groupCaches),
+    };
+}
+
+async function importBackup({ posts = [], groupCaches = {} }) {
+    const postResult = await importPosts(posts);
+    const cleanCaches = sanitizeGroupCaches(groupCaches);
+    if (Object.keys(cleanCaches).length) await storage.set(cleanCaches);
+    return { ...postResult, groupCachesRestored: Object.keys(cleanCaches).length };
 }
 
 async function handleApiCall({ action, params }) {

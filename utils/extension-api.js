@@ -80,6 +80,18 @@ export const invokeBackend = async (action, payload = {}) => {
                     }
                 });
 
+            case 'backup:export':
+                return chrome.runtime.sendMessage({ type: 'EXPORT_BACKUP' }, (response) => {
+                    if (response?.success) resolve(response.data);
+                    else reject(new Error(response?.error || 'Failed to export backup'));
+                });
+
+            case 'backup:import':
+                return chrome.runtime.sendMessage({ type: 'IMPORT_BACKUP', payload }, (response) => {
+                    if (response?.success) resolve(response.data);
+                    else reject(new Error(response?.error || 'Failed to import backup'));
+                });
+
             // Ignore updater actions
             case 'updater:get-settings':
             case 'updater:save-settings':

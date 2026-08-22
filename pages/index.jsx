@@ -321,13 +321,16 @@ export default function Dashboard() {
   // --- Backup / Restore (carry posts across updates & between machines) ---
   const handleExportPosts = async () => {
     try {
-      const all = await invokeBackend('posts:get-all'); // full array incl. trash
+      const backup = await invokeBackend('backup:export');
+      const all = backup.posts || [];
+      const groupCacheCount = Object.keys(backup.groupCaches || {}).length;
       const payload = {
         app: 'vrchat-group-notify-scheduler',
-        type: 'posts-backup',
+        type: 'scheduler-backup',
         version: appVersion || '',
         exportedAt: new Date().toISOString(),
-        posts: all || [],
+        posts: all,
+        groupCaches: backup.groupCaches || {},
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -339,7 +342,7 @@ export default function Dashboard() {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setToast({ message: `${(all || []).length}件の投稿をエクスポートしました`, type: 'success' });
+      setToast({ message: `${all.length}件の投稿と${groupCacheCount}件のグループ権限キャッシュをエクスポートしました`, type: 'success' });
     } catch (err) {
       setError('エクスポートに失敗しました: ' + err.message);
     }
@@ -368,10 +371,13 @@ export default function Dashboard() {
         onConfirm: async () => {
           setConfirmDialog(null);
           try {
-            const res = await invokeBackend('posts:import', { posts: incoming });
+            const res = await invokeBackend('backup:import', {
+              posts: incoming,
+              groupCaches: parsed?.groupCaches || {},
+            });
             await fetchPosts();
             setToast({
-              message: `取り込み完了（新規${res?.added ?? 0} / 更新${res?.updated ?? 0} / 再予約${res?.rescheduled ?? 0}）`,
+              message: `取り込み完了（新規${res?.added ?? 0} / 更新${res?.updated ?? 0} / 再予約${res?.rescheduled ?? 0} / 権限キャッシュ${res?.groupCachesRestored ?? 0}）`,
               type: 'success',
             });
           } catch (err) {
@@ -972,14 +978,14 @@ export default function Dashboard() {
                   className={styles.retryBtn}
                   style={{ fontSize: '0.85rem', color: 'var(--accent-hover)' }}
                   onClick={handleExportPosts}
-                  title="すべての予約投稿をJSONファイルに書き出します（バックアップ）"
+                  title="予約投稿とグループ権限キャッシュをJSONファイルに書き出します（バックアップ）"
                 >⬇ Backup</button>
 
                 <button
                   className={styles.retryBtn}
                   style={{ fontSize: '0.85rem', color: 'var(--accent-hover)' }}
                   onClick={() => document.getElementById('vgs-import-input')?.click()}
-                  title="バックアップしたJSONから予約投稿を復元します"
+                  title="バックアップしたJSONから予約投稿とグループ権限キャッシュを復元します"
                 >⬆ Restore</button>
                 <input
                   id="vgs-import-input"
