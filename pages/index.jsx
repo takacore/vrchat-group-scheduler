@@ -3,6 +3,15 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import styles from '../styles/Home.module.css';
 
+const toDateTimeLocal = (date) => {
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+};
+
+const getBrowserLanguage = () => (
+  typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('ja') ? 'ja' : 'en'
+);
+
 export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [authNeedLogin, setAuthNeedLogin] = useState(false);
@@ -29,7 +38,7 @@ export default function Dashboard() {
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
-  const [notification, setNotification] = useState(false);
+  const [notification, setNotification] = useState(true);
 
   // Recurrence State
   const [isRecurring, setIsRecurring] = useState(false);
@@ -49,10 +58,22 @@ export default function Dashboard() {
   const [checkResult, setCheckResult] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(null); // { percent }
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [language, setLanguage] = useState('auto');
+  const [browserLanguage, setBrowserLanguage] = useState('en');
+  const activeLanguage = language === 'auto' ? browserLanguage : language;
+  const t = (ja, en) => activeLanguage === 'ja' ? ja : en;
 
   useEffect(() => {
     checkAuth();
     loadUpdateSettings();
+    setScheduledAt(toDateTimeLocal(new Date(Date.now() + 5 * 60_000)));
+    const detectedLanguage = getBrowserLanguage();
+    setBrowserLanguage(detectedLanguage);
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get(['uiLanguage'], ({ uiLanguage }) => {
+        if (['auto', 'ja', 'en'].includes(uiLanguage)) setLanguage(uiLanguage);
+      });
+    }
   }, []);
 
   // Fetch posts whenever showTrash changes
@@ -103,6 +124,9 @@ export default function Dashboard() {
     try {
       const saved = await invokeBackend('updater:save-settings', updateSettings);
       setUpdateSettings(saved);
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await chrome.storage.local.set({ uiLanguage: language });
+      }
       setShowSettings(false);
     } catch (err) {
       console.error('Failed to save settings:', err);
@@ -756,17 +780,17 @@ export default function Dashboard() {
 
         <div className={styles.grid}>
           <section className={styles.card}>
-            <h2 className={styles.cardTitle}>New Scheduled Post</h2>
+            <h2 className={styles.cardTitle}>{t('新しい予約投稿', 'New Scheduled Post')}</h2>
             <form onSubmit={handleCreate}>
               <div className={styles.formGroup}>
-                <label className={styles.label}>Group</label>
+                <label className={styles.label}>{t('グループ', 'Group')}</label>
                 <select
                   className={styles.select}
                   value={groupId}
                   onChange={handleGroupChange}
                   required
                 >
-                  <option value="" disabled>Select a group</option>
+                  <option value="" disabled>{t('グループを選択', 'Select a group')}</option>
                   {groups.map(g => (
                     <option key={g.id} value={g.groupId}>
                       {g.name} ({g.shortCode}) {g.isOwner ? '★' : '◆'}
@@ -793,7 +817,7 @@ export default function Dashboard() {
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.label}>Title</label>
+                <label className={styles.label}>{t('タイトル', 'Title')}</label>
                 <input
                   className={styles.input}
                   value={title}
@@ -803,7 +827,7 @@ export default function Dashboard() {
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.label}>Message</label>
+                <label className={styles.label}>{t('本文', 'Message')}</label>
                 <textarea
                   className={styles.textarea}
                   value={text}
@@ -813,7 +837,7 @@ export default function Dashboard() {
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.label}>Image (Optional, PNG/JPG, ≤5MB)</label>
+                <label className={styles.label}>{t('画像（任意、PNG/JPG、5MB以下）', 'Image (Optional, PNG/JPG, ≤5MB)')}</label>
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/gif"
@@ -821,7 +845,7 @@ export default function Dashboard() {
                   style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}
                 />
                 <div style={{ fontSize: '0.7rem', color: 'var(--warn)', marginTop: '0.25rem' }}>
-                  ※ VRChat側の画像添付は VRC+ サブスクライブ必須で、最低 512×512px 程度必要です。条件外なら画像なしで投稿継続し、X同時投稿には影響しません。
+                  {t('※ VRChat側の画像添付は VRC+ サブスクライブ必須で、最低 512×512px 程度必要です。条件外なら画像なしで投稿を継続します。', 'Images on VRChat require VRC+ and should be at least about 512×512px. If the requirements are not met, the post is sent without an image.')}
                 </div>
                 {imageDataUrl && (
                   <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -854,7 +878,7 @@ export default function Dashboard() {
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.label}>Start Time (First Execution)</label>
+                <label className={styles.label}>{t('投稿日時（初回）', 'Start Time (First Execution)')}</label>
                 <input
                   type="datetime-local"
                   className={styles.input}
@@ -872,28 +896,28 @@ export default function Dashboard() {
                     checked={isRecurring}
                     onChange={e => setIsRecurring(e.target.checked)}
                   />
-                  <label htmlFor="recur" style={{ marginBottom: 0, color: 'var(--text-secondary)', fontWeight: 600 }}>Repeat Schedule</label>
+                  <label htmlFor="recur" style={{ marginBottom: 0, color: 'var(--text-secondary)', fontWeight: 600 }}>{t('繰り返し投稿', 'Repeat Schedule')}</label>
                 </div>
 
                 {isRecurring && (
                   <div style={{ marginLeft: '1.5rem', padding: '0.75rem', background: 'var(--well)', border: '1px solid var(--border)', borderRadius: '8px' }}>
                     <div style={{ marginBottom: '0.5rem' }}>
-                      <label className={styles.label} style={{ fontSize: '0.9rem' }}>Frequency</label>
+                      <label className={styles.label} style={{ fontSize: '0.9rem' }}>{t('頻度', 'Frequency')}</label>
                       <select
                         className={styles.select}
                         style={{ fontSize: '0.9rem', padding: '0.4rem' }}
                         value={recurrenceType}
                         onChange={e => setRecurrenceType(e.target.value)}
                       >
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
+                        <option value="daily">{t('毎日', 'Daily')}</option>
+                        <option value="weekly">{t('毎週', 'Weekly')}</option>
+                        <option value="monthly">{t('毎月', 'Monthly')}</option>
                       </select>
                     </div>
 
                     {recurrenceType === 'weekly' && (
                       <div>
-                        <label className={styles.label} style={{ fontSize: '0.9rem' }}>Days</label>
+                        <label className={styles.label} style={{ fontSize: '0.9rem' }}>{t('曜日', 'Days')}</label>
                         <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
                           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
                             <button
@@ -918,7 +942,7 @@ export default function Dashboard() {
                       </div>
                     )}
                     <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Will repeat at the same time as "Start Time".
+                      {t('「投稿日時」と同じ時刻に繰り返します。', 'Will repeat at the same time as "Start Time".')}
                     </div>
                   </div>
                 )}
@@ -931,10 +955,10 @@ export default function Dashboard() {
                   checked={notification}
                   onChange={e => setNotification(e.target.checked)}
                 />
-                <label htmlFor="noti" style={{ marginBottom: 0, color: 'var(--text-secondary)' }}>Send Notification to Group</label>
+                <label htmlFor="noti" style={{ marginBottom: 0, color: 'var(--text-secondary)' }}>{t('グループへ通知を送信', 'Send Notification to Group')}</label>
               </div>
 
-              <button type="submit" className={styles.button}>Schedule Post</button>
+              <button type="submit" className={styles.button}>{t('投稿を予約', 'Schedule Post')}</button>
             </form>
           </section>
 
@@ -1063,10 +1087,23 @@ export default function Dashboard() {
         {showSettings && (
           <div className={styles.settingsOverlay} onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
             <div className={styles.settingsModal}>
-              <div className={styles.settingsTitle}>⚙ アップデート設定</div>
+              <div className={styles.settingsTitle}>⚙ {t('設定', 'Settings')}</div>
 
               <div className={styles.settingsGroup}>
-                <label className={styles.settingsLabel}>更新チャネル</label>
+                <label className={styles.settingsLabel}>{t('表示言語', 'Display language')}</label>
+                <select
+                  className={styles.settingsSelect}
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                >
+                  <option value="auto">{t('Chromeの言語を使用', 'Use Chrome language')} ({browserLanguage === 'ja' ? '日本語' : 'English'})</option>
+                  <option value="ja">日本語</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+
+              <div className={styles.settingsGroup}>
+                <label className={styles.settingsLabel}>{t('更新チャネル', 'Update channel')}</label>
                 <select
                   className={styles.settingsSelect}
                   value={updateSettings.channel}
@@ -1113,8 +1150,8 @@ export default function Dashboard() {
               </div>
 
               <div className={styles.settingsActions}>
-                <button className={styles.settingsSaveBtn} onClick={handleSaveSettings}>保存</button>
-                <button className={styles.settingsCloseBtn} onClick={() => setShowSettings(false)}>閉じる</button>
+                <button className={styles.settingsSaveBtn} onClick={handleSaveSettings}>{t('保存', 'Save')}</button>
+                <button className={styles.settingsCloseBtn} onClick={() => setShowSettings(false)}>{t('閉じる', 'Close')}</button>
               </div>
             </div>
           </div>
