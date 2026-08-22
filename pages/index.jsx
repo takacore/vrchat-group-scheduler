@@ -40,11 +40,6 @@ export default function Dashboard() {
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [imageName, setImageName] = useState('');
 
-  // X(Twitter) State
-  const [postToX, setPostToX] = useState(false);
-  const [xText, setXText] = useState('');
-  const [xLoggedIn, setXLoggedIn] = useState(null); // null = unknown, true/false = checked
-
   // Update State
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -387,17 +382,6 @@ export default function Dashboard() {
     reader.readAsDataURL(file);
   };
 
-  const handleCheckXLogin = async () => {
-    try {
-      const ok = await invokeBackend('x:check-login');
-      setXLoggedIn(!!ok);
-      setToast({ message: ok ? 'X(Twitter)にログイン済みです' : 'X(Twitter)にログインしていません', type: ok ? 'success' : 'error' });
-    } catch (err) {
-      setXLoggedIn(false);
-      setError('X確認失敗: ' + err.message);
-    }
-  };
-
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!groupId || !title || !text || !scheduledAt) return;
@@ -435,8 +419,6 @@ export default function Dashboard() {
         status: isRecurring ? 'recurring' : 'pending',
         imageDataUrl: imageDataUrl || null,
         imageName: imageName || null,
-        postToX,
-        xText: postToX ? (xText || `${title}\n\n${text}`) : null,
       });
 
       if (res) { // res is the new post object
@@ -447,8 +429,6 @@ export default function Dashboard() {
         setRecurrenceDays([]);
         setImageDataUrl('');
         setImageName('');
-        setPostToX(false);
-        setXText('');
         fetchPosts();
         setToast({ message: '投稿をスケジュールしました！', type: 'success' });
       }
@@ -494,8 +474,6 @@ export default function Dashboard() {
     setScheduledAt('');
     setImageDataUrl(post.imageDataUrl || '');
     setImageName(post.imageName || '');
-    setPostToX(!!post.postToX);
-    setXText(post.xText || '');
 
     setError('');
   };
@@ -520,8 +498,6 @@ export default function Dashboard() {
     setScheduledAt(''); // Reset time for new schedule
     setImageDataUrl(post.imageDataUrl || '');
     setImageName(post.imageName || '');
-    setPostToX(!!post.postToX);
-    setXText(post.xText || '');
 
     // Handle Recurrence
     if (post.recurrence) {
@@ -619,8 +595,6 @@ export default function Dashboard() {
           /* Badges */
           --badge-border: #2A3441;
           --badge-text: #A8B4C2;
-          --badge-x-bg: #15191E;
-          --badge-x-text: #E7E9EA;
           /* Elevation */
           --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.04);
           --shadow-elevated: 0 16px 48px rgba(0, 0, 0, 0.6);
@@ -960,58 +934,6 @@ export default function Dashboard() {
                 <label htmlFor="noti" style={{ marginBottom: 0, color: 'var(--text-secondary)' }}>Send Notification to Group</label>
               </div>
 
-              <div className={styles.formGroup}>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    id="postX"
-                    checked={postToX}
-                    onChange={e => setPostToX(e.target.checked)}
-                  />
-                  <label htmlFor="postX" style={{ marginBottom: 0, color: 'var(--text-secondary)', fontWeight: 600 }}>X(Twitter)にも同時投稿</label>
-                  <span
-                    onClick={handleCheckXLogin}
-                    style={{
-                      marginLeft: 'auto',
-                      color: xLoggedIn === true ? 'var(--ok)' : xLoggedIn === false ? 'var(--danger)' : 'var(--accent-hover)',
-                      cursor: 'pointer',
-                      textDecoration: 'underline',
-                      fontSize: '0.8rem',
-                    }}
-                    title="X(Twitter)へのログイン状態を確認"
-                  >
-                    {xLoggedIn === true ? '✓ ログイン済み' : xLoggedIn === false ? '✕ 未ログイン' : 'X ログイン確認'}
-                  </span>
-                </div>
-
-                {postToX && (
-                  <div style={{ marginLeft: '1.5rem', padding: '0.75rem', background: 'var(--well)', border: '1px solid var(--border)', borderRadius: '8px' }}>
-                    <label className={styles.label} style={{ fontSize: '0.9rem' }}>
-                      Xポスト本文（空欄ならTitle+Messageを使用、280字以内）
-                    </label>
-                    <textarea
-                      className={styles.textarea}
-                      style={{ fontSize: '0.9rem', minHeight: '60px' }}
-                      value={xText}
-                      onChange={e => setXText(e.target.value)}
-                      maxLength={280}
-                      placeholder={`${title}\n\n${text}`.slice(0, 280)}
-                    />
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-                      {(xText || `${title}\n\n${text}`).length} / 280
-                    </div>
-                    {imageDataUrl && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--accent-hover)' }}>
-                        ↑ アップロードした画像も同時に投稿します
-                      </div>
-                    )}
-                    <div style={{ fontSize: '0.75rem', color: 'var(--warn)', marginTop: '0.3rem' }}>
-                      ※ ブラウザでX(Twitter)にログイン済みであることが必要です
-                    </div>
-                  </div>
-                )}
-              </div>
-
               <button type="submit" className={styles.button}>Schedule Post</button>
             </form>
           </section>
@@ -1072,7 +994,6 @@ export default function Dashboard() {
                     <div className={styles.postTitle}>
                       {post.status === 'recurring' && <span style={{ fontSize: '0.7rem', fontWeight: 600, background: 'transparent', border: '1px solid var(--badge-border)', color: 'var(--badge-text)', padding: '1px 6px', borderRadius: '6px', marginRight: '6px', verticalAlign: '1px' }}>Repeat</span>}
                       {post.imageDataUrl && <span style={{ fontSize: '0.7rem', fontWeight: 600, background: 'transparent', border: '1px solid var(--badge-border)', color: 'var(--badge-text)', padding: '1px 6px', borderRadius: '6px', marginRight: '6px', verticalAlign: '1px' }}>IMG</span>}
-                      {post.postToX && <span style={{ fontSize: '0.7rem', fontWeight: 600, background: 'var(--badge-x-bg)', color: 'var(--badge-x-text)', padding: '1px 6px', borderRadius: '6px', marginRight: '6px', verticalAlign: '1px' }}>𝕏</span>}
                       {post.title}
                     </div>
                     <div className={styles.postMeta}>
@@ -1096,11 +1017,6 @@ export default function Dashboard() {
                       {post.vrcImageError && (
                         <div style={{ color: 'var(--danger)', fontSize: '0.8rem', marginTop: '2px' }}>
                           画像添付失敗: {post.vrcImageError}
-                        </div>
-                      )}
-                      {post.xError && (
-                        <div style={{ color: 'var(--danger)', fontSize: '0.8rem', marginTop: '2px' }}>
-                          X投稿失敗: {post.xError}
                         </div>
                       )}
                     </div>
@@ -1241,3 +1157,4 @@ export default function Dashboard() {
     </>
   );
 }
+
